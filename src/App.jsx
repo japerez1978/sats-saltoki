@@ -300,7 +300,7 @@ function ColHeader({ label, fieldKey, sats, filters, setFilters, sortKey, sortDi
             {filtered.length===0 && <p className="text-xs text-gray-400 px-3 py-2">Sin resultados</p>}
             {filtered.map(o=>(
               <button key={o} onClick={()=>select(o)}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 truncate ${filters[fieldKey]===o?"font-bold text-blue-600 bg-blue-50":""}`}>
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 truncate text-gray-700 ${filters[fieldKey]===o?"font-bold text-blue-600 bg-blue-50":""}`}>
                 {o}
               </button>
             ))}
