@@ -86,15 +86,12 @@ function PhotoViewer({ fotos, onClose }) {
         <button onClick={onClose} className="absolute -top-10 right-0 text-white text-3xl">×</button>
         <img src={fotos[idx]} alt="" className="w-full max-h-[80vh] object-contain rounded-xl"/>
         {fotos.length>1 && (
-          <div className="flex justify-center gap-3 mt-3">
-            {fotos.map((_,i)=>(
-              <button key={i} onClick={()=>setIdx(i)}
-                className={`w-2.5 h-2.5 rounded-full ${i===idx?"bg-white":"bg-white/40"}`}/>
-            ))}
-          </div>
-        )}
-        {fotos.length>1 && (
           <>
+            <div className="flex justify-center gap-3 mt-3">
+              {fotos.map((_,i)=>(
+                <button key={i} onClick={()=>setIdx(i)} className={`w-2.5 h-2.5 rounded-full ${i===idx?"bg-white":"bg-white/40"}`}/>
+              ))}
+            </div>
             <button onClick={()=>setIdx(i=>(i-1+fotos.length)%fotos.length)}
               className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-10 h-10 text-xl">‹</button>
             <button onClick={()=>setIdx(i=>(i+1)%fotos.length)}
@@ -124,8 +121,7 @@ function SATModal({ sat, onSave, onClose }) {
   };
 
   const handlePhotos=(e)=>{
-    const files=Array.from(e.target.files);
-    files.forEach(file=>{
+    Array.from(e.target.files).forEach(file=>{
       const reader=new FileReader();
       reader.onload=ev=>setForm(f=>({...f,fotos:[...(f.fotos||[]),ev.target.result]}));
       reader.readAsDataURL(file);
@@ -134,7 +130,6 @@ function SATModal({ sat, onSave, onClose }) {
   };
 
   const removePhoto=(i)=>setForm(f=>({...f,fotos:f.fotos.filter((_,j)=>j!==i)}));
-
   const lines=(form.acciones||"").split("\n").filter(Boolean);
 
   return (
@@ -191,7 +186,6 @@ function SATModal({ sat, onSave, onClose }) {
             <label className="block text-xs text-gray-500 mb-1 font-medium">Revisión</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.revision} onChange={e=>set("revision",e.target.value)}/>
           </div>
-          {/* Acciones */}
           <div>
             <label className="block text-xs text-gray-500 mb-1 font-medium">Registro de acciones</label>
             <div ref={logRef} className="max-h-44 overflow-y-auto bg-gray-50 border rounded-lg p-3 text-xs space-y-1 mb-2">
@@ -210,33 +204,27 @@ function SATModal({ sat, onSave, onClose }) {
               <button onClick={addAction} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Añadir</button>
             </div>
           </div>
-          {/* Fotos */}
           <div>
             <label className="block text-xs text-gray-500 mb-1 font-medium">Fotos</label>
             <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotos}/>
             {(form.fotos||[]).length===0 ? (
               <button onClick={()=>photoRef.current.click()}
                 className="w-full border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-xl py-6 text-gray-400 hover:text-blue-500 text-sm transition flex flex-col items-center gap-2">
-                <span className="text-3xl">📷</span>
-                <span>Pulsa para añadir fotos</span>
+                <span className="text-3xl">📷</span><span>Pulsa para añadir fotos</span>
               </button>
             ) : (
               <div>
                 <div className="grid grid-cols-4 gap-2 mb-2">
                   {form.fotos.map((f,i)=>(
                     <div key={i} className="relative group">
-                      <img src={f} alt="" className="w-full h-20 object-cover rounded-lg cursor-pointer border hover:opacity-90"
-                        onClick={()=>setPhotoViewer(true)}/>
-                      <button onClick={()=>removePhoto(i)}
-                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs opacity-0 group-hover:opacity-100 flex items-center justify-center">×</button>
+                      <img src={f} alt="" className="w-full h-20 object-cover rounded-lg cursor-pointer border hover:opacity-90" onClick={()=>setPhotoViewer(true)}/>
+                      <button onClick={()=>removePhoto(i)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs opacity-0 group-hover:opacity-100 flex items-center justify-center">×</button>
                     </div>
                   ))}
                   <button onClick={()=>photoRef.current.click()}
                     className="h-20 border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-lg text-gray-400 hover:text-blue-500 text-2xl flex items-center justify-center transition">+</button>
                 </div>
-                <button onClick={()=>setPhotoViewer(true)} className="text-xs text-blue-500 hover:underline">
-                  Ver todas ({form.fotos.length})
-                </button>
+                <button onClick={()=>setPhotoViewer(true)} className="text-xs text-blue-500 hover:underline">Ver todas ({form.fotos.length})</button>
               </div>
             )}
           </div>
@@ -256,31 +244,67 @@ function SATModal({ sat, onSave, onClose }) {
   );
 }
 
-// ---- Column filter dropdown ----
-function ColFilter({ label, options, value, onChange }) {
-  const [open,setOpen]=useState(false);
-  const ref=useRef();
+// ---- Column header with search + filter dropdown ----
+function ColHeader({ label, fieldKey, sats, filters, setFilters, sortKey, sortDir, onSort }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef();
+
   useEffect(()=>{
-    const h=e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown",h); return()=>document.removeEventListener("mousedown",h);
+    const h = e => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   },[]);
+
+  const active = !!filters[fieldKey];
+
+  // Unique values for this field
+  let options = [];
+  if (fieldKey === "garantia" || fieldKey === "terminado") {
+    options = ["Sí","No"];
+  } else {
+    options = [...new Set(sats.map(s => String(s[fieldKey]||"")))].filter(Boolean).sort();
+  }
+
+  const filtered = search ? options.filter(o => o.toLowerCase().includes(search.toLowerCase())) : options;
+
+  const select = (v) => { setFilters(f=>({...f,[fieldKey]:v})); setOpen(false); setSearch(""); };
+  const clear = (e) => { e.stopPropagation(); setFilters(f=>({...f,[fieldKey]:""})); };
+
   return (
-    <div className="relative" ref={ref}>
-      <button onClick={()=>setOpen(o=>!o)}
-        className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition
-          ${value?"bg-blue-100 text-blue-700":"text-white hover:bg-white/20"}`}>
-        {label} {value ? `(${value})` : ""} <span className="text-[10px]">▼</span>
+    <div className="relative flex items-center gap-1 group/col" ref={ref}>
+      <button onClick={()=>onSort(fieldKey)} className="flex items-center gap-1 hover:text-blue-200 transition">
+        <span>{label}</span>
+        <span className="text-[10px] opacity-60">
+          {sortKey===fieldKey ? (sortDir==="asc"?"▲":"▼") : "⇅"}
+        </span>
       </button>
+      <button onClick={()=>setOpen(o=>!o)}
+        className={`ml-0.5 rounded px-1 transition text-[11px] ${active?"bg-blue-400 text-white":"opacity-50 hover:opacity-100"}`}>
+        ▾
+      </button>
+      {active && (
+        <button onClick={clear} className="text-blue-300 hover:text-white text-[11px] leading-none">×</button>
+      )}
       {open && (
-        <div className="absolute top-full left-0 mt-1 bg-white border rounded-xl shadow-xl z-50 min-w-[160px] py-1 max-h-60 overflow-y-auto">
-          <button onClick={()=>{onChange("");setOpen(false);}}
-            className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-gray-500">Todos</button>
-          {options.filter(Boolean).sort().map(o=>(
-            <button key={o} onClick={()=>{onChange(o);setOpen(false);}}
-              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 truncate ${value===o?"font-bold text-blue-600":""}`}>
-              {o}
-            </button>
-          ))}
+        <div className="absolute top-full left-0 mt-1 bg-white border rounded-xl shadow-2xl z-50 w-52 py-2"
+          onClick={e=>e.stopPropagation()}>
+          <div className="px-2 pb-2">
+            <input autoFocus className="w-full border rounded-lg px-2 py-1.5 text-xs text-gray-700" placeholder="Buscar..."
+              value={search} onChange={e=>setSearch(e.target.value)}/>
+          </div>
+          <button onClick={()=>select("")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-gray-400 italic">
+            — Todos —
+          </button>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length===0 && <p className="text-xs text-gray-400 px-3 py-2">Sin resultados</p>}
+            {filtered.map(o=>(
+              <button key={o} onClick={()=>select(o)}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 truncate ${filters[fieldKey]===o?"font-bold text-blue-600 bg-blue-50":""}`}>
+                {o}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -289,27 +313,38 @@ function ColFilter({ label, options, value, onChange }) {
 
 // ---- App ----
 export default function App() {
-  const [sats,setSats]=useState(()=>{ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");}catch{return[];} });
-  const [modal,setModal]=useState(null);
-  const [filtro,setFiltro]=useState("todos");
-  const [busqueda,setBusqueda]=useState("");
-  const [confirmDel,setConfirmDel]=useState(null);
-  const [msg,setMsg]=useState("");
-  const fileRef=useRef();
+  const [sats, setSats] = useState(()=>{ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");}catch{return[];} });
+  const [modal, setModal] = useState(null);
+  const [filtro, setFiltro] = useState("todos");
+  const [busqueda, setBusqueda] = useState("");
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [msg, setMsg] = useState("");
+  const fileRef = useRef();
 
   // Column filters
-  const [cf,setCf]=useState({proveedor:"",cliente:"",garantia:"",terminado:""});
-  const setCF=(k,v)=>setCf(f=>({...f,[k]:v}));
+  const [filters, setFilters] = useState({
+    proveedor:"", cliente:"", garantia:"", terminado:"",
+    referencia:"", articulo:"", nCalidad:"", nSAT:""
+  });
+
+  // Sorting
+  const [sortKey, setSortKey] = useState("fecha");
+  const [sortDir, setSortDir] = useState("desc");
+
+  const onSort = (key) => {
+    if (sortKey===key) setSortDir(d=>d==="asc"?"desc":"asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
 
   useEffect(()=>{ localStorage.setItem(STORAGE_KEY,JSON.stringify(sats)); },[sats]);
 
-  const save=(form)=>{
+  const save = (form) => {
     setSats(prev=>{ const ex=prev.find(s=>s.id===form.id); return ex?prev.map(s=>s.id===form.id?form:s):[form,...prev]; });
     setModal(null);
   };
-  const del=(id)=>{ setSats(s=>s.filter(x=>x.id!==id)); setConfirmDel(null); };
+  const del = (id) => { setSats(s=>s.filter(x=>x.id!==id)); setConfirmDel(null); };
 
-  const handleImport=(e)=>{
+  const handleImport = (e) => {
     const file=e.target.files[0]; if(!file) return;
     const reader=new FileReader();
     reader.onload=ev=>{
@@ -326,33 +361,42 @@ export default function App() {
     e.target.value="";
   };
 
-  // Unique values for filters
-  const uniq=(key)=>[...new Set(sats.map(s=>String(s[key]||"")))];
+  const anyFilter = Object.values(filters).some(Boolean);
 
-  const filtered=sats.filter(s=>{
-    const mF=filtro==="todos"||(filtro==="activos"?!s.terminado:s.terminado);
-    const q=busqueda.toLowerCase();
-    const mB=!q||[s.articulo,s.proveedor,s.cliente,s.referencia,s.nCalidad,s.nSAT,s.acciones].some(v=>(v||"").toLowerCase().includes(q));
-    const mCF=
-      (!cf.proveedor||s.proveedor===cf.proveedor)&&
-      (!cf.cliente||s.cliente===cf.cliente)&&
-      (!cf.garantia||(cf.garantia==="Sí"?s.garantia:!s.garantia))&&
-      (!cf.terminado||(cf.terminado==="Sí"?s.terminado:!s.terminado));
-    return mF&&mB&&mCF;
-  });
+  // Apply all filters + sort
+  const filtered = sats
+    .filter(s=>{
+      const mF = filtro==="todos"||(filtro==="activos"?!s.terminado:s.terminado);
+      const q = busqueda.toLowerCase();
+      const mB = !q||[s.articulo,s.proveedor,s.cliente,s.referencia,s.nCalidad,s.nSAT,s.acciones].some(v=>(v||"").toLowerCase().includes(q));
+      const mCF = Object.entries(filters).every(([k,v])=>{
+        if (!v) return true;
+        if (k==="garantia") return v==="Sí" ? s.garantia : !s.garantia;
+        if (k==="terminado") return v==="Sí" ? s.terminado : !s.terminado;
+        return String(s[k]||"")===v;
+      });
+      return mF && mB && mCF;
+    })
+    .sort((a,b)=>{
+      let va=String(a[sortKey]||""), vb=String(b[sortKey]||"");
+      if(sortKey==="fecha") { va=a.fecha||""; vb=b.fecha||""; }
+      const cmp = va.localeCompare(vb, "es", {numeric:true});
+      return sortDir==="asc" ? cmp : -cmp;
+    });
 
   const total=sats.length, activos=sats.filter(s=>!s.terminado).length, term=sats.filter(s=>s.terminado).length;
-  const anyFilter=Object.values(cf).some(Boolean);
+
+  const hProps = { sats, filters, setFilters, sortKey, sortDir, onSort };
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
       {/* Header */}
-      <div className="bg-white border-b shadow-sm sticky top-0 z-40 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+      <div className="bg-white border-b shadow-sm sticky top-0 z-40 px-3 py-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-600 text-white rounded-xl px-3 py-2 font-bold text-lg">SAT</div>
+            <div className="bg-blue-600 text-white rounded-xl px-3 py-2 font-bold text-lg shrink-0">SAT</div>
             <div>
-              <div className="font-bold text-gray-800">Gestión de SATs · Saltoki Logroño</div>
+              <div className="font-bold text-gray-800 text-sm">Gestión de SATs · Saltoki Logroño</div>
               <div className="text-xs text-gray-400">{total} registros · {activos} activos · {term} terminados</div>
             </div>
           </div>
@@ -366,96 +410,116 @@ export default function App() {
               ))}
             </div>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport}/>
-            <button onClick={()=>fileRef.current.click()} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">📂 Cargar Excel</button>
-            <button onClick={()=>exportToExcel(sats)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">📥 Exportar Excel</button>
-            <button onClick={()=>setModal(emptyForm())} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">+ Nuevo SAT</button>
+            <button onClick={()=>fileRef.current.click()} className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-xl text-sm font-semibold shadow">📂 Cargar</button>
+            <button onClick={()=>exportToExcel(sats)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl text-sm font-semibold shadow">📥 Exportar</button>
+            <button onClick={()=>setModal(emptyForm())} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl text-sm font-semibold shadow">+ Nuevo</button>
           </div>
         </div>
-        {msg && <div className="max-w-7xl mx-auto mt-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800">{msg}</div>}
+
+        {/* Active filters bar */}
         {anyFilter && (
-          <div className="max-w-7xl mx-auto mt-2 flex items-center gap-2">
-            <span className="text-xs text-gray-500">Filtros activos:</span>
-            {Object.entries(cf).filter(([,v])=>v).map(([k,v])=>(
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-500 font-medium">Filtros:</span>
+            {Object.entries(filters).filter(([,v])=>v).map(([k,v])=>(
               <span key={k} className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-                {k}: {v} <button onClick={()=>setCF(k,"")} className="hover:text-red-500">×</button>
+                {k}: <strong>{v}</strong>
+                <button onClick={()=>setFilters(f=>({...f,[k]:""}))} className="hover:text-red-500 font-bold">×</button>
               </span>
             ))}
-            <button onClick={()=>setCf({proveedor:"",cliente:"",garantia:"",terminado:""})} className="text-xs text-red-500 hover:underline">Limpiar todo</button>
+            <button onClick={()=>setFilters({proveedor:"",cliente:"",garantia:"",terminado:"",referencia:"",articulo:"",nCalidad:"",nSAT:""})}
+              className="text-xs text-red-400 hover:text-red-600 hover:underline">Limpiar todo</button>
           </div>
         )}
+        {msg && <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800">{msg}</div>}
       </div>
 
-      {/* Table */}
-      <div className="max-w-7xl mx-auto px-2 py-4 overflow-x-auto">
+      {/* Table — fills full width, columns share space */}
+      <div className="px-2 py-3">
         {filtered.length===0 ? (
           <div className="text-center py-20 text-gray-400">
             <div className="text-5xl mb-3">📋</div>
             <p className="font-medium">No hay SATs que mostrar</p>
-            <p className="text-sm mt-1">Pulsa "📂 Cargar Excel" para importar, o "+ Nuevo SAT" para empezar</p>
+            <p className="text-sm mt-1">Pulsa "📂 Cargar" para importar tu Excel, o "+ Nuevo" para empezar</p>
           </div>
         ) : (
-          <table className="w-full text-xs border-collapse min-w-[1000px]">
-            <thead>
-              <tr className="bg-gray-700 text-white">
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Fecha</th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Referencia</th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Artículo</th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">
-                  <ColFilter label="Proveedor" options={uniq("proveedor")} value={cf.proveedor} onChange={v=>setCF("proveedor",v)}/>
-                </th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600">Uds</th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">
-                  <ColFilter label="Cliente" options={uniq("cliente")} value={cf.cliente} onChange={v=>setCF("cliente",v)}/>
-                </th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">
-                  <ColFilter label="Garantía" options={["Sí","No"]} value={cf.garantia} onChange={v=>setCF("garantia",v)}/>
-                </th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Nº Calidad</th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600">SAT</th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Última acción</th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600">Revisión</th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">
-                  <ColFilter label="Terminado" options={["Sí","No"]} value={cf.terminado} onChange={v=>setCF("terminado",v)}/>
-                </th>
-                <th className="px-2 py-2 text-left font-semibold border border-gray-600">Fotos</th>
-                <th className="px-2 py-2 border border-gray-600"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((s,i)=>{
-                const last=lastLine(s.acciones);
-                const bg=s.terminado?"bg-green-50":i%2===0?"bg-white":"bg-gray-50";
-                return (
-                  <tr key={s.id} className={`${bg} hover:bg-blue-50 transition group cursor-pointer`} onClick={()=>setModal({...s})}>
-                    <td className="px-2 py-1.5 border border-gray-200 whitespace-nowrap font-medium text-gray-700">{fmt(s.fecha)}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 font-mono text-gray-600 whitespace-nowrap">{s.referencia}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 font-medium text-gray-800 max-w-[180px]"><div className="truncate" title={s.articulo}>{s.articulo}</div></td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 max-w-[130px]"><div className="truncate" title={s.proveedor}>{s.proveedor}</div></td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-center">{s.uds}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600">{s.cliente}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-center">{s.garantia&&<span className="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-semibold">s</span>}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 whitespace-nowrap">{s.nCalidad}</td>
-                    <td className="px-2 py-1.5 border border-gray-200">{s.nSAT&&<span className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">{s.nSAT}</span>}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 max-w-[200px]"><div className="truncate" title={last}>{last.replace(/^-/,"").trim()}</div></td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-gray-500 max-w-[90px]"><div className="truncate">{s.revision}</div></td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-center">{s.terminado&&<span className="bg-green-500 text-white px-1.5 py-0.5 rounded font-bold">S</span>}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-center">
-                      {(s.fotos||[]).length>0
-                        ? <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs font-medium">📷 {s.fotos.length}</span>
-                        : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-2 py-1.5 border border-gray-200">
-                      <button onClick={e=>{e.stopPropagation();setConfirmDel(s.id);}}
-                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 px-1">🗑</button>
-                    </td>
+          <>
+            <div className="overflow-x-auto rounded-xl shadow">
+              <table className="w-full text-xs border-collapse" style={{tableLayout:"fixed"}}>
+                <colgroup>
+                  <col style={{width:"6%"}}/>   {/* Fecha */}
+                  <col style={{width:"8%"}}/>   {/* Referencia */}
+                  <col style={{width:"16%"}}/>  {/* Artículo */}
+                  <col style={{width:"12%"}}/>  {/* Proveedor */}
+                  <col style={{width:"4%"}}/>   {/* Uds */}
+                  <col style={{width:"6%"}}/>   {/* Cliente */}
+                  <col style={{width:"6%"}}/>   {/* Garantía */}
+                  <col style={{width:"8%"}}/>   {/* Nº Calidad */}
+                  <col style={{width:"7%"}}/>   {/* SAT */}
+                  <col style={{width:"17%"}}/>  {/* Última acción */}
+                  <col style={{width:"6%"}}/>   {/* Revisión */}
+                  <col style={{width:"6%"}}/>   {/* Terminado */}
+                  <col style={{width:"4%"}}/>   {/* Fotos */}
+                  <col style={{width:"3%"}}/>   {/* Del */}
+                </colgroup>
+                <thead>
+                  <tr className="bg-gray-700 text-white text-[11px]">
+                    {[
+                      {label:"Fecha",       key:"fecha"},
+                      {label:"Referencia",  key:"referencia"},
+                      {label:"Artículo",    key:"articulo"},
+                      {label:"Proveedor",   key:"proveedor"},
+                      {label:"Uds",         key:"uds"},
+                      {label:"Cliente",     key:"cliente"},
+                      {label:"Garantía",    key:"garantia"},
+                      {label:"Nº Calidad",  key:"nCalidad"},
+                      {label:"SAT",         key:"nSAT"},
+                      {label:"Última acción",key:"acciones"},
+                      {label:"Revisión",    key:"revision"},
+                      {label:"Terminado",   key:"terminado"},
+                    ].map(({label,key})=>(
+                      <th key={key} className="px-2 py-2 text-left border border-gray-600">
+                        <ColHeader label={label} fieldKey={key} {...hProps}/>
+                      </th>
+                    ))}
+                    <th className="px-2 py-2 text-left border border-gray-600">Fotos</th>
+                    <th className="border border-gray-600"></th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        {filtered.length>0 && (
-          <div className="mt-2 text-xs text-gray-400 text-right">{filtered.length} de {sats.length} registros</div>
+                </thead>
+                <tbody>
+                  {filtered.map((s,i)=>{
+                    const last=lastLine(s.acciones);
+                    const bg=s.terminado?"bg-green-50":i%2===0?"bg-white":"bg-gray-50";
+                    return (
+                      <tr key={s.id} className={`${bg} hover:bg-blue-50 transition group cursor-pointer`} onClick={()=>setModal({...s})}>
+                        <td className="px-2 py-1.5 border border-gray-200 whitespace-nowrap font-medium text-gray-700">{fmt(s.fecha)}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 font-mono text-gray-600 truncate">{s.referencia}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 font-medium text-gray-800 truncate" title={s.articulo}>{s.articulo}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-gray-600 truncate" title={s.proveedor}>{s.proveedor}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-center">{s.uds}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-gray-600 truncate">{s.cliente}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-center">{s.garantia&&<span className="bg-yellow-100 text-yellow-800 px-1 py-0.5 rounded font-semibold">Sí</span>}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-gray-600 truncate">{s.nCalidad}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 truncate">{s.nSAT&&<span className="bg-purple-100 text-purple-800 px-1 py-0.5 rounded">{s.nSAT}</span>}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-gray-600 truncate" title={last}>{last.replace(/^-/,"").trim()}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-gray-500 truncate">{s.revision}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-center">{s.terminado&&<span className="bg-green-500 text-white px-1 py-0.5 rounded font-bold text-[10px]">S</span>}</td>
+                        <td className="px-2 py-1.5 border border-gray-200 text-center">
+                          {(s.fotos||[]).length>0
+                            ? <span className="bg-blue-100 text-blue-700 px-1 py-0.5 rounded text-[10px] font-medium">📷{s.fotos.length}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-1 py-1.5 border border-gray-200 text-center">
+                          <button onClick={e=>{e.stopPropagation();setConfirmDel(s.id);}}
+                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600">🗑</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-1.5 text-xs text-gray-400 text-right px-1">{filtered.length} de {sats.length} registros</div>
+          </>
         )}
       </div>
 
