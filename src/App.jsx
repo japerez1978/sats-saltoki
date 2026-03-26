@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 
-const STORAGE_KEY = "sats_saltoki_v4";
+const STORAGE_KEY = "sats_saltoki_v5";
 const COLS = ["Fecha","Referencia","Artículo","Proveedor","Uds","Cliente","GARANTIA","Nº Calidad","SAT","Acciones","Revisión","Terminado"];
 
 const emptyForm = () => ({
@@ -10,7 +10,7 @@ const emptyForm = () => ({
   referencia:"", articulo:"", proveedor:"",
   uds:1, cliente:"", garantia:false,
   nCalidad:"", nSAT:"", acciones:"",
-  revision:"", terminado:false
+  revision:"", terminado:false, fotos:[]
 });
 
 function fmt(iso) {
@@ -23,112 +23,119 @@ function isoFromDisplay(str) {
   if (!str) return "";
   const s = String(str);
   const p = s.split("/");
-  if (p.length === 3) {
-    let [d,m,y] = p;
-    if (y.length === 2) y = "20"+y;
+  if (p.length===3) {
+    let [d,m,y]=p; if(y.length===2) y="20"+y;
     return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
   }
   if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.slice(0,10);
-  // Excel serial date
-  if (!isNaN(s)) {
-    const d = XLSX.SSF.parse_date_code(Number(s));
-    if (d) return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;
-  }
   return "";
 }
 
 function todayStr() {
-  const d = new Date();
+  const d=new Date();
   return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getFullYear()).slice(2)}`;
 }
 
 function lastLine(text) {
   if (!text) return "";
-  const lines = text.split("\n").map(l=>l.trim()).filter(Boolean);
-  return lines[lines.length-1] || "";
+  const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);
+  return lines[lines.length-1]||"";
 }
 
 function importFromWorkbook(wb) {
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"", raw:false });
-  if (rows.length < 2) return [];
-  const header = rows[0].map(h => String(h).trim().toLowerCase());
-  const idx = (...names) => {
-    for (const n of names) {
-      const i = header.findIndex(h => h.includes(n.toLowerCase()));
-      if (i >= 0) return i;
-    }
-    return -1;
-  };
-  const iF   = idx("fecha");
-  const iRef = idx("referencia","ref");
-  const iArt = idx("artículo","articulo");
-  const iPro = idx("proveedor");
-  const iUds = idx("uds","ud");
-  const iCli = idx("cliente");
-  const iGar = idx("garantia","garantía");
-  const iCal = idx("calidad","devol","nº calidad");
-  const iSAT = idx("sat");
-  const iAcc = idx("acciones","accion","última acción");
-  const iRev = idx("revisión","revision");
-  const iTer = idx("terminado");
-
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
+  if(rows.length<2) return [];
+  const header=rows[0].map(h=>String(h).trim().toLowerCase());
+  const idx=(...names)=>{for(const n of names){const i=header.findIndex(h=>h.includes(n.toLowerCase()));if(i>=0)return i;}return -1;};
+  const iF=idx("fecha"),iRef=idx("referencia"),iArt=idx("artículo","articulo"),iPro=idx("proveedor");
+  const iUds=idx("uds"),iCli=idx("cliente"),iGar=idx("garantia","garantía");
+  const iCal=idx("calidad","devol","nº calidad"),iSAT=idx("sat");
+  const iAcc=idx("acciones","accion"),iRev=idx("revisión","revision"),iTer=idx("terminado");
   return rows.slice(1).filter(r=>r.some(c=>c!=="")).map((r,i)=>{
-    const get = (i) => i>=0 ? String(r[i]??"").trim() : "";
+    const get=i=>i>=0?String(r[i]??"").trim():"";
     return {
-      id: Date.now()+i,
-      fecha: isoFromDisplay(get(iF)),
-      referencia: get(iRef),
-      articulo: get(iArt),
-      proveedor: get(iPro),
-      uds: get(iUds)||1,
-      cliente: get(iCli),
-      garantia: ["s","si","sí","true","1"].includes(get(iGar).toLowerCase()),
-      nCalidad: get(iCal),
-      nSAT: get(iSAT),
-      acciones: get(iAcc),
-      revision: get(iRev),
-      terminado: ["s","si","sí","true","1"].includes(get(iTer).toLowerCase()),
+      id:Date.now()+i, fecha:isoFromDisplay(get(iF)), referencia:get(iRef),
+      articulo:get(iArt), proveedor:get(iPro), uds:get(iUds)||1,
+      cliente:get(iCli), garantia:["s","si","sí","true","1"].includes(get(iGar).toLowerCase()),
+      nCalidad:get(iCal), nSAT:get(iSAT), acciones:get(iAcc),
+      revision:get(iRev), terminado:["s","si","sí","true","1"].includes(get(iTer).toLowerCase()), fotos:[]
     };
   });
 }
 
 function exportToExcel(sats) {
-  const data = [
-    COLS,
-    ...sats.map(s => [
-      fmt(s.fecha), s.referencia, s.articulo, s.proveedor,
-      s.uds, s.cliente, s.garantia?"s":"",
-      s.nCalidad, s.nSAT,
-      (s.acciones||"").replace(/\n/g," | "),
-      s.revision, s.terminado?"S":""
-    ])
-  ];
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  ws["!cols"] = [70,100,220,180,40,70,60,100,90,350,120,70].map(w=>({wch:Math.round(w/7)}));
-  XLSX.utils.book_append_sheet(wb, ws, "SATs");
-  XLSX.writeFile(wb, `SATs_Saltoki_Logrono_${new Date().toISOString().slice(0,10)}.xlsx`);
+  const data=[COLS,...sats.map(s=>[
+    fmt(s.fecha),s.referencia,s.articulo,s.proveedor,s.uds,s.cliente,
+    s.garantia?"s":"",s.nCalidad,s.nSAT,(s.acciones||"").replace(/\n/g," | "),
+    s.revision,s.terminado?"S":""
+  ])];
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(data);
+  ws["!cols"]=[70,100,220,180,40,70,60,100,90,350,120,70].map(w=>({wch:Math.round(w/7)}));
+  XLSX.utils.book_append_sheet(wb,ws,"SATs");
+  XLSX.writeFile(wb,`SATs_Saltoki_Logrono_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ---- Photo viewer ----
+function PhotoViewer({ fotos, onClose }) {
+  const [idx,setIdx]=useState(0);
+  return (
+    <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="relative max-w-3xl w-full" onClick={e=>e.stopPropagation()}>
+        <button onClick={onClose} className="absolute -top-10 right-0 text-white text-3xl">×</button>
+        <img src={fotos[idx]} alt="" className="w-full max-h-[80vh] object-contain rounded-xl"/>
+        {fotos.length>1 && (
+          <div className="flex justify-center gap-3 mt-3">
+            {fotos.map((_,i)=>(
+              <button key={i} onClick={()=>setIdx(i)}
+                className={`w-2.5 h-2.5 rounded-full ${i===idx?"bg-white":"bg-white/40"}`}/>
+            ))}
+          </div>
+        )}
+        {fotos.length>1 && (
+          <>
+            <button onClick={()=>setIdx(i=>(i-1+fotos.length)%fotos.length)}
+              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-10 h-10 text-xl">‹</button>
+            <button onClick={()=>setIdx(i=>(i+1)%fotos.length)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-10 h-10 text-xl">›</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ---- Modal ----
 function SATModal({ sat, onSave, onClose }) {
-  const [form, setForm] = useState({...sat});
-  const [newAction, setNewAction] = useState("");
-  const logRef = useRef();
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const [form,setForm]=useState({...sat, fotos:sat.fotos||[]});
+  const [newAction,setNewAction]=useState("");
+  const [photoViewer,setPhotoViewer]=useState(false);
+  const logRef=useRef();
+  const photoRef=useRef();
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
 
-  const addAction = () => {
-    const t = newAction.trim();
-    if (!t) return;
-    const line = `-(${todayStr()}) ${t}`;
-    const updated = form.acciones ? form.acciones+"\n"+line : line;
-    setForm(f=>({...f, acciones:updated}));
+  const addAction=()=>{
+    const t=newAction.trim(); if(!t) return;
+    const line=`-(${todayStr()}) ${t}`;
+    setForm(f=>({...f,acciones:f.acciones?f.acciones+"\n"+line:line}));
     setNewAction("");
     setTimeout(()=>logRef.current?.scrollTo(0,99999),50);
   };
 
-  const lines = (form.acciones||"").split("\n").filter(Boolean);
+  const handlePhotos=(e)=>{
+    const files=Array.from(e.target.files);
+    files.forEach(file=>{
+      const reader=new FileReader();
+      reader.onload=ev=>setForm(f=>({...f,fotos:[...(f.fotos||[]),ev.target.result]}));
+      reader.readAsDataURL(file);
+    });
+    e.target.value="";
+  };
+
+  const removePhoto=(i)=>setForm(f=>({...f,fotos:f.fotos.filter((_,j)=>j!==i)}));
+
+  const lines=(form.acciones||"").split("\n").filter(Boolean);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -184,6 +191,7 @@ function SATModal({ sat, onSave, onClose }) {
             <label className="block text-xs text-gray-500 mb-1 font-medium">Revisión</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.revision} onChange={e=>set("revision",e.target.value)}/>
           </div>
+          {/* Acciones */}
           <div>
             <label className="block text-xs text-gray-500 mb-1 font-medium">Registro de acciones</label>
             <div ref={logRef} className="max-h-44 overflow-y-auto bg-gray-50 border rounded-lg p-3 text-xs space-y-1 mb-2">
@@ -202,6 +210,36 @@ function SATModal({ sat, onSave, onClose }) {
               <button onClick={addAction} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Añadir</button>
             </div>
           </div>
+          {/* Fotos */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Fotos</label>
+            <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotos}/>
+            {(form.fotos||[]).length===0 ? (
+              <button onClick={()=>photoRef.current.click()}
+                className="w-full border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-xl py-6 text-gray-400 hover:text-blue-500 text-sm transition flex flex-col items-center gap-2">
+                <span className="text-3xl">📷</span>
+                <span>Pulsa para añadir fotos</span>
+              </button>
+            ) : (
+              <div>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {form.fotos.map((f,i)=>(
+                    <div key={i} className="relative group">
+                      <img src={f} alt="" className="w-full h-20 object-cover rounded-lg cursor-pointer border hover:opacity-90"
+                        onClick={()=>setPhotoViewer(true)}/>
+                      <button onClick={()=>removePhoto(i)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs opacity-0 group-hover:opacity-100 flex items-center justify-center">×</button>
+                    </div>
+                  ))}
+                  <button onClick={()=>photoRef.current.click()}
+                    className="h-20 border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-lg text-gray-400 hover:text-blue-500 text-2xl flex items-center justify-center transition">+</button>
+                </div>
+                <button onClick={()=>setPhotoViewer(true)} className="text-xs text-blue-500 hover:underline">
+                  Ver todas ({form.fotos.length})
+                </button>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <input type="checkbox" id="term" checked={form.terminado} onChange={e=>set("terminado",e.target.checked)} className="w-5 h-5 accent-green-600"/>
             <label htmlFor="term" className="text-sm font-semibold text-green-700">TERMINADO</label>
@@ -213,65 +251,102 @@ function SATModal({ sat, onSave, onClose }) {
           <button onClick={onClose} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm">Cancelar</button>
         </div>
       </div>
+      {photoViewer && <PhotoViewer fotos={form.fotos} onClose={()=>setPhotoViewer(false)}/>}
+    </div>
+  );
+}
+
+// ---- Column filter dropdown ----
+function ColFilter({ label, options, value, onChange }) {
+  const [open,setOpen]=useState(false);
+  const ref=useRef();
+  useEffect(()=>{
+    const h=e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown",h); return()=>document.removeEventListener("mousedown",h);
+  },[]);
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={()=>setOpen(o=>!o)}
+        className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition
+          ${value?"bg-blue-100 text-blue-700":"text-white hover:bg-white/20"}`}>
+        {label} {value ? `(${value})` : ""} <span className="text-[10px]">▼</span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 bg-white border rounded-xl shadow-xl z-50 min-w-[160px] py-1 max-h-60 overflow-y-auto">
+          <button onClick={()=>{onChange("");setOpen(false);}}
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-gray-500">Todos</button>
+          {options.filter(Boolean).sort().map(o=>(
+            <button key={o} onClick={()=>{onChange(o);setOpen(false);}}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 truncate ${value===o?"font-bold text-blue-600":""}`}>
+              {o}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ---- App ----
 export default function App() {
-  const [sats, setSats] = useState(()=>{
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; }
-  });
-  const [modal, setModal] = useState(null);
-  const [filtro, setFiltro] = useState("todos");
-  const [busqueda, setBusqueda] = useState("");
-  const [confirmDel, setConfirmDel] = useState(null);
-  const [msg, setMsg] = useState("");
-  const fileRef = useRef();
+  const [sats,setSats]=useState(()=>{ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");}catch{return[];} });
+  const [modal,setModal]=useState(null);
+  const [filtro,setFiltro]=useState("todos");
+  const [busqueda,setBusqueda]=useState("");
+  const [confirmDel,setConfirmDel]=useState(null);
+  const [msg,setMsg]=useState("");
+  const fileRef=useRef();
 
-  useEffect(()=>{ localStorage.setItem(STORAGE_KEY, JSON.stringify(sats)); },[sats]);
+  // Column filters
+  const [cf,setCf]=useState({proveedor:"",cliente:"",garantia:"",terminado:""});
+  const setCF=(k,v)=>setCf(f=>({...f,[k]:v}));
 
-  const save = (form) => {
-    setSats(prev=>{
-      const exists = prev.find(s=>s.id===form.id);
-      return exists ? prev.map(s=>s.id===form.id?form:s) : [form,...prev];
-    });
+  useEffect(()=>{ localStorage.setItem(STORAGE_KEY,JSON.stringify(sats)); },[sats]);
+
+  const save=(form)=>{
+    setSats(prev=>{ const ex=prev.find(s=>s.id===form.id); return ex?prev.map(s=>s.id===form.id?form:s):[form,...prev]; });
     setModal(null);
   };
+  const del=(id)=>{ setSats(s=>s.filter(x=>x.id!==id)); setConfirmDel(null); };
 
-  const del = (id) => { setSats(s=>s.filter(x=>x.id!==id)); setConfirmDel(null); };
-
-  const handleImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
+  const handleImport=(e)=>{
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
       try {
-        const wb = XLSX.read(ev.target.result, { type:"array", cellDates:true });
-        const imported = importFromWorkbook(wb);
-        if (!imported.length) { setMsg("⚠️ No se encontraron datos."); return; }
+        const wb=XLSX.read(ev.target.result,{type:"array",cellDates:true});
+        const imported=importFromWorkbook(wb);
+        if(!imported.length){setMsg("⚠️ No se encontraron datos.");return;}
         setSats(imported);
         setMsg(`✅ ${imported.length} registros importados.`);
         setTimeout(()=>setMsg(""),4000);
-      } catch(err) {
-        setMsg("❌ Error: "+err.message);
-      }
+      } catch(err){ setMsg("❌ Error: "+err.message); }
     };
     reader.readAsArrayBuffer(file);
     e.target.value="";
   };
 
-  const filtered = sats.filter(s=>{
-    const mF = filtro==="todos"||(filtro==="activos"?!s.terminado:s.terminado);
-    const q = busqueda.toLowerCase();
-    const mB = !q||[s.articulo,s.proveedor,s.cliente,s.referencia,s.nCalidad,s.nSAT].some(v=>(v||"").toLowerCase().includes(q));
-    return mF && mB;
+  // Unique values for filters
+  const uniq=(key)=>[...new Set(sats.map(s=>String(s[key]||"")))];
+
+  const filtered=sats.filter(s=>{
+    const mF=filtro==="todos"||(filtro==="activos"?!s.terminado:s.terminado);
+    const q=busqueda.toLowerCase();
+    const mB=!q||[s.articulo,s.proveedor,s.cliente,s.referencia,s.nCalidad,s.nSAT,s.acciones].some(v=>(v||"").toLowerCase().includes(q));
+    const mCF=
+      (!cf.proveedor||s.proveedor===cf.proveedor)&&
+      (!cf.cliente||s.cliente===cf.cliente)&&
+      (!cf.garantia||(cf.garantia==="Sí"?s.garantia:!s.garantia))&&
+      (!cf.terminado||(cf.terminado==="Sí"?s.terminado:!s.terminado));
+    return mF&&mB&&mCF;
   });
 
   const total=sats.length, activos=sats.filter(s=>!s.terminado).length, term=sats.filter(s=>s.terminado).length;
+  const anyFilter=Object.values(cf).some(Boolean);
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
+      {/* Header */}
       <div className="bg-white border-b shadow-sm sticky top-0 z-40 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
@@ -282,7 +357,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <input className="border rounded-xl px-3 py-2 text-sm w-48" placeholder="🔍 Buscar..."
+            <input className="border rounded-xl px-3 py-2 text-sm w-52" placeholder="🔍 Buscar en todos los campos..."
               value={busqueda} onChange={e=>setBusqueda(e.target.value)}/>
             <div className="flex rounded-xl overflow-hidden border text-sm">
               {[["todos","Todos"],["activos","Activos"],["terminados","Terminados"]].map(([k,l])=>(
@@ -291,23 +366,26 @@ export default function App() {
               ))}
             </div>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport}/>
-            <button onClick={()=>fileRef.current.click()}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">
-              📂 Cargar Excel
-            </button>
-            <button onClick={()=>exportToExcel(sats)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">
-              📥 Exportar Excel
-            </button>
-            <button onClick={()=>setModal(emptyForm())}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">
-              + Nuevo SAT
-            </button>
+            <button onClick={()=>fileRef.current.click()} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">📂 Cargar Excel</button>
+            <button onClick={()=>exportToExcel(sats)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">📥 Exportar Excel</button>
+            <button onClick={()=>setModal(emptyForm())} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">+ Nuevo SAT</button>
           </div>
         </div>
         {msg && <div className="max-w-7xl mx-auto mt-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800">{msg}</div>}
+        {anyFilter && (
+          <div className="max-w-7xl mx-auto mt-2 flex items-center gap-2">
+            <span className="text-xs text-gray-500">Filtros activos:</span>
+            {Object.entries(cf).filter(([,v])=>v).map(([k,v])=>(
+              <span key={k} className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+                {k}: {v} <button onClick={()=>setCF(k,"")} className="hover:text-red-500">×</button>
+              </span>
+            ))}
+            <button onClick={()=>setCf({proveedor:"",cliente:"",garantia:"",terminado:""})} className="text-xs text-red-500 hover:underline">Limpiar todo</button>
+          </div>
+        )}
       </div>
 
+      {/* Table */}
       <div className="max-w-7xl mx-auto px-2 py-4 overflow-x-auto">
         {filtered.length===0 ? (
           <div className="text-center py-20 text-gray-400">
@@ -316,32 +394,56 @@ export default function App() {
             <p className="text-sm mt-1">Pulsa "📂 Cargar Excel" para importar, o "+ Nuevo SAT" para empezar</p>
           </div>
         ) : (
-          <table className="w-full text-xs border-collapse min-w-[900px]">
+          <table className="w-full text-xs border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-gray-700 text-white">
-                {["Fecha","Referencia","Artículo","Proveedor","Uds","Cliente","GAR","Nº Calidad","SAT","Última acción","Rev","Term",""].map((h,i)=>(
-                  <th key={i} className="px-2 py-2 text-left font-semibold whitespace-nowrap border border-gray-600">{h}</th>
-                ))}
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Fecha</th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Referencia</th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Artículo</th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">
+                  <ColFilter label="Proveedor" options={uniq("proveedor")} value={cf.proveedor} onChange={v=>setCF("proveedor",v)}/>
+                </th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600">Uds</th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">
+                  <ColFilter label="Cliente" options={uniq("cliente")} value={cf.cliente} onChange={v=>setCF("cliente",v)}/>
+                </th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">
+                  <ColFilter label="Garantía" options={["Sí","No"]} value={cf.garantia} onChange={v=>setCF("garantia",v)}/>
+                </th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Nº Calidad</th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600">SAT</th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">Última acción</th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600">Revisión</th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600 whitespace-nowrap">
+                  <ColFilter label="Terminado" options={["Sí","No"]} value={cf.terminado} onChange={v=>setCF("terminado",v)}/>
+                </th>
+                <th className="px-2 py-2 text-left font-semibold border border-gray-600">Fotos</th>
+                <th className="px-2 py-2 border border-gray-600"></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((s,i)=>{
-                const last = lastLine(s.acciones);
-                const bg = s.terminado?"bg-green-50":i%2===0?"bg-white":"bg-gray-50";
+                const last=lastLine(s.acciones);
+                const bg=s.terminado?"bg-green-50":i%2===0?"bg-white":"bg-gray-50";
                 return (
                   <tr key={s.id} className={`${bg} hover:bg-blue-50 transition group cursor-pointer`} onClick={()=>setModal({...s})}>
                     <td className="px-2 py-1.5 border border-gray-200 whitespace-nowrap font-medium text-gray-700">{fmt(s.fecha)}</td>
                     <td className="px-2 py-1.5 border border-gray-200 font-mono text-gray-600 whitespace-nowrap">{s.referencia}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 font-medium text-gray-800 max-w-[200px]"><div className="truncate" title={s.articulo}>{s.articulo}</div></td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 max-w-[150px]"><div className="truncate" title={s.proveedor}>{s.proveedor}</div></td>
+                    <td className="px-2 py-1.5 border border-gray-200 font-medium text-gray-800 max-w-[180px]"><div className="truncate" title={s.articulo}>{s.articulo}</div></td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 max-w-[130px]"><div className="truncate" title={s.proveedor}>{s.proveedor}</div></td>
                     <td className="px-2 py-1.5 border border-gray-200 text-center">{s.uds}</td>
                     <td className="px-2 py-1.5 border border-gray-200 text-gray-600">{s.cliente}</td>
                     <td className="px-2 py-1.5 border border-gray-200 text-center">{s.garantia&&<span className="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-semibold">s</span>}</td>
                     <td className="px-2 py-1.5 border border-gray-200 text-gray-600 whitespace-nowrap">{s.nCalidad}</td>
                     <td className="px-2 py-1.5 border border-gray-200">{s.nSAT&&<span className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">{s.nSAT}</span>}</td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 max-w-[220px]"><div className="truncate" title={last}>{last.replace(/^-/,"").trim()}</div></td>
-                    <td className="px-2 py-1.5 border border-gray-200 text-gray-500 max-w-[100px]"><div className="truncate">{s.revision}</div></td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 max-w-[200px]"><div className="truncate" title={last}>{last.replace(/^-/,"").trim()}</div></td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-gray-500 max-w-[90px]"><div className="truncate">{s.revision}</div></td>
                     <td className="px-2 py-1.5 border border-gray-200 text-center">{s.terminado&&<span className="bg-green-500 text-white px-1.5 py-0.5 rounded font-bold">S</span>}</td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-center">
+                      {(s.fotos||[]).length>0
+                        ? <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs font-medium">📷 {s.fotos.length}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-2 py-1.5 border border-gray-200">
                       <button onClick={e=>{e.stopPropagation();setConfirmDel(s.id);}}
                         className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 px-1">🗑</button>
@@ -351,6 +453,9 @@ export default function App() {
               })}
             </tbody>
           </table>
+        )}
+        {filtered.length>0 && (
+          <div className="mt-2 text-xs text-gray-400 text-right">{filtered.length} de {sats.length} registros</div>
         )}
       </div>
 
