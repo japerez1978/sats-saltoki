@@ -1,0 +1,374 @@
+import { useState, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
+
+const STORAGE_KEY = "sats_saltoki_v4";
+const COLS = ["Fecha","Referencia","Artículo","Proveedor","Uds","Cliente","GARANTIA","Nº Calidad","SAT","Acciones","Revisión","Terminado"];
+
+const emptyForm = () => ({
+  id: Date.now(),
+  fecha: new Date().toISOString().slice(0,10),
+  referencia:"", articulo:"", proveedor:"",
+  uds:1, cliente:"", garantia:false,
+  nCalidad:"", nSAT:"", acciones:"",
+  revision:"", terminado:false
+});
+
+function fmt(iso) {
+  if (!iso) return "";
+  const [y,m,d] = iso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+function isoFromDisplay(str) {
+  if (!str) return "";
+  const s = String(str);
+  const p = s.split("/");
+  if (p.length === 3) {
+    let [d,m,y] = p;
+    if (y.length === 2) y = "20"+y;
+    return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+  }
+  if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.slice(0,10);
+  // Excel serial date
+  if (!isNaN(s)) {
+    const d = XLSX.SSF.parse_date_code(Number(s));
+    if (d) return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;
+  }
+  return "";
+}
+
+function todayStr() {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getFullYear()).slice(2)}`;
+}
+
+function lastLine(text) {
+  if (!text) return "";
+  const lines = text.split("\n").map(l=>l.trim()).filter(Boolean);
+  return lines[lines.length-1] || "";
+}
+
+function importFromWorkbook(wb) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"", raw:false });
+  if (rows.length < 2) return [];
+  const header = rows[0].map(h => String(h).trim().toLowerCase());
+  const idx = (...names) => {
+    for (const n of names) {
+      const i = header.findIndex(h => h.includes(n.toLowerCase()));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const iF   = idx("fecha");
+  const iRef = idx("referencia","ref");
+  const iArt = idx("artículo","articulo");
+  const iPro = idx("proveedor");
+  const iUds = idx("uds","ud");
+  const iCli = idx("cliente");
+  const iGar = idx("garantia","garantía");
+  const iCal = idx("calidad","devol","nº calidad");
+  const iSAT = idx("sat");
+  const iAcc = idx("acciones","accion","última acción");
+  const iRev = idx("revisión","revision");
+  const iTer = idx("terminado");
+
+  return rows.slice(1).filter(r=>r.some(c=>c!=="")).map((r,i)=>{
+    const get = (i) => i>=0 ? String(r[i]??"").trim() : "";
+    return {
+      id: Date.now()+i,
+      fecha: isoFromDisplay(get(iF)),
+      referencia: get(iRef),
+      articulo: get(iArt),
+      proveedor: get(iPro),
+      uds: get(iUds)||1,
+      cliente: get(iCli),
+      garantia: ["s","si","sí","true","1"].includes(get(iGar).toLowerCase()),
+      nCalidad: get(iCal),
+      nSAT: get(iSAT),
+      acciones: get(iAcc),
+      revision: get(iRev),
+      terminado: ["s","si","sí","true","1"].includes(get(iTer).toLowerCase()),
+    };
+  });
+}
+
+function exportToExcel(sats) {
+  const data = [
+    COLS,
+    ...sats.map(s => [
+      fmt(s.fecha), s.referencia, s.articulo, s.proveedor,
+      s.uds, s.cliente, s.garantia?"s":"",
+      s.nCalidad, s.nSAT,
+      (s.acciones||"").replace(/\n/g," | "),
+      s.revision, s.terminado?"S":""
+    ])
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws["!cols"] = [70,100,220,180,40,70,60,100,90,350,120,70].map(w=>({wch:Math.round(w/7)}));
+  XLSX.utils.book_append_sheet(wb, ws, "SATs");
+  XLSX.writeFile(wb, `SATs_Saltoki_Logrono_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ---- Modal ----
+function SATModal({ sat, onSave, onClose }) {
+  const [form, setForm] = useState({...sat});
+  const [newAction, setNewAction] = useState("");
+  const logRef = useRef();
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const addAction = () => {
+    const t = newAction.trim();
+    if (!t) return;
+    const line = `-(${todayStr()}) ${t}`;
+    const updated = form.acciones ? form.acciones+"\n"+line : line;
+    setForm(f=>({...f, acciones:updated}));
+    setNewAction("");
+    setTimeout(()=>logRef.current?.scrollTo(0,99999),50);
+  };
+
+  const lines = (form.acciones||"").split("\n").filter(Boolean);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+          <h2 className="font-bold text-gray-800 text-lg">{sat.articulo?"✏️ Editar SAT":"➕ Nuevo SAT"}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Fecha</label>
+              <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Referencia</label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm font-mono" value={form.referencia} onChange={e=>set("referencia",e.target.value)} placeholder="Ej: 2501000020"/>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Artículo *</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.articulo} onChange={e=>set("articulo",e.target.value)}/>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Proveedor</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.proveedor} onChange={e=>set("proveedor",e.target.value)}/>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Uds</label>
+              <input type="number" min="1" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.uds} onChange={e=>set("uds",e.target.value)}/>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Cliente</label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.cliente} onChange={e=>set("cliente",e.target.value)}/>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex items-center gap-2 mt-4">
+              <input type="checkbox" id="gar" checked={form.garantia} onChange={e=>set("garantia",e.target.checked)} className="w-4 h-4 accent-yellow-500"/>
+              <label htmlFor="gar" className="text-sm font-medium">GARANTÍA</label>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Nº Calidad / DEVOL</label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.nCalidad} onChange={e=>set("nCalidad",e.target.value)}/>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">SAT / Incidencia</label>
+              <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.nSAT} onChange={e=>set("nSAT",e.target.value)}/>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Revisión</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.revision} onChange={e=>set("revision",e.target.value)}/>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Registro de acciones</label>
+            <div ref={logRef} className="max-h-44 overflow-y-auto bg-gray-50 border rounded-lg p-3 text-xs space-y-1 mb-2">
+              {lines.length===0 && <p className="text-gray-400 italic">Sin acciones todavía</p>}
+              {lines.map((l,i)=>(
+                <div key={i} className="flex gap-1">
+                  <span className="text-blue-400 shrink-0">•</span>
+                  <span className="text-gray-700">{l.replace(/^-/,"").trim()}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input className="flex-1 border rounded-lg px-3 py-2 text-sm" placeholder="Nueva acción... (Enter para añadir)"
+                value={newAction} onChange={e=>setNewAction(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addAction()}/>
+              <button onClick={addAction} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Añadir</button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="term" checked={form.terminado} onChange={e=>set("terminado",e.target.checked)} className="w-5 h-5 accent-green-600"/>
+            <label htmlFor="term" className="text-sm font-semibold text-green-700">TERMINADO</label>
+          </div>
+        </div>
+        <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex gap-3">
+          <button onClick={()=>{if(!form.articulo.trim())return; onSave(form);}}
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-semibold text-sm">Guardar SAT</button>
+          <button onClick={onClose} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- App ----
+export default function App() {
+  const [sats, setSats] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; }
+  });
+  const [modal, setModal] = useState(null);
+  const [filtro, setFiltro] = useState("todos");
+  const [busqueda, setBusqueda] = useState("");
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [msg, setMsg] = useState("");
+  const fileRef = useRef();
+
+  useEffect(()=>{ localStorage.setItem(STORAGE_KEY, JSON.stringify(sats)); },[sats]);
+
+  const save = (form) => {
+    setSats(prev=>{
+      const exists = prev.find(s=>s.id===form.id);
+      return exists ? prev.map(s=>s.id===form.id?form:s) : [form,...prev];
+    });
+    setModal(null);
+  };
+
+  const del = (id) => { setSats(s=>s.filter(x=>x.id!==id)); setConfirmDel(null); };
+
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type:"array", cellDates:true });
+        const imported = importFromWorkbook(wb);
+        if (!imported.length) { setMsg("⚠️ No se encontraron datos."); return; }
+        setSats(imported);
+        setMsg(`✅ ${imported.length} registros importados.`);
+        setTimeout(()=>setMsg(""),4000);
+      } catch(err) {
+        setMsg("❌ Error: "+err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value="";
+  };
+
+  const filtered = sats.filter(s=>{
+    const mF = filtro==="todos"||(filtro==="activos"?!s.terminado:s.terminado);
+    const q = busqueda.toLowerCase();
+    const mB = !q||[s.articulo,s.proveedor,s.cliente,s.referencia,s.nCalidad,s.nSAT].some(v=>(v||"").toLowerCase().includes(q));
+    return mF && mB;
+  });
+
+  const total=sats.length, activos=sats.filter(s=>!s.terminado).length, term=sats.filter(s=>s.terminado).length;
+
+  return (
+    <div className="min-h-screen bg-gray-100 font-sans">
+      <div className="bg-white border-b shadow-sm sticky top-0 z-40 px-4 py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 text-white rounded-xl px-3 py-2 font-bold text-lg">SAT</div>
+            <div>
+              <div className="font-bold text-gray-800">Gestión de SATs · Saltoki Logroño</div>
+              <div className="text-xs text-gray-400">{total} registros · {activos} activos · {term} terminados</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input className="border rounded-xl px-3 py-2 text-sm w-48" placeholder="🔍 Buscar..."
+              value={busqueda} onChange={e=>setBusqueda(e.target.value)}/>
+            <div className="flex rounded-xl overflow-hidden border text-sm">
+              {[["todos","Todos"],["activos","Activos"],["terminados","Terminados"]].map(([k,l])=>(
+                <button key={k} onClick={()=>setFiltro(k)}
+                  className={`px-3 py-2 font-medium ${filtro===k?"bg-blue-600 text-white":"bg-white text-gray-600 hover:bg-gray-50"}`}>{l}</button>
+              ))}
+            </div>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport}/>
+            <button onClick={()=>fileRef.current.click()}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">
+              📂 Cargar Excel
+            </button>
+            <button onClick={()=>exportToExcel(sats)}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">
+              📥 Exportar Excel
+            </button>
+            <button onClick={()=>setModal(emptyForm())}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow">
+              + Nuevo SAT
+            </button>
+          </div>
+        </div>
+        {msg && <div className="max-w-7xl mx-auto mt-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800">{msg}</div>}
+      </div>
+
+      <div className="max-w-7xl mx-auto px-2 py-4 overflow-x-auto">
+        {filtered.length===0 ? (
+          <div className="text-center py-20 text-gray-400">
+            <div className="text-5xl mb-3">📋</div>
+            <p className="font-medium">No hay SATs que mostrar</p>
+            <p className="text-sm mt-1">Pulsa "📂 Cargar Excel" para importar, o "+ Nuevo SAT" para empezar</p>
+          </div>
+        ) : (
+          <table className="w-full text-xs border-collapse min-w-[900px]">
+            <thead>
+              <tr className="bg-gray-700 text-white">
+                {["Fecha","Referencia","Artículo","Proveedor","Uds","Cliente","GAR","Nº Calidad","SAT","Última acción","Rev","Term",""].map((h,i)=>(
+                  <th key={i} className="px-2 py-2 text-left font-semibold whitespace-nowrap border border-gray-600">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((s,i)=>{
+                const last = lastLine(s.acciones);
+                const bg = s.terminado?"bg-green-50":i%2===0?"bg-white":"bg-gray-50";
+                return (
+                  <tr key={s.id} className={`${bg} hover:bg-blue-50 transition group cursor-pointer`} onClick={()=>setModal({...s})}>
+                    <td className="px-2 py-1.5 border border-gray-200 whitespace-nowrap font-medium text-gray-700">{fmt(s.fecha)}</td>
+                    <td className="px-2 py-1.5 border border-gray-200 font-mono text-gray-600 whitespace-nowrap">{s.referencia}</td>
+                    <td className="px-2 py-1.5 border border-gray-200 font-medium text-gray-800 max-w-[200px]"><div className="truncate" title={s.articulo}>{s.articulo}</div></td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 max-w-[150px]"><div className="truncate" title={s.proveedor}>{s.proveedor}</div></td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-center">{s.uds}</td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600">{s.cliente}</td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-center">{s.garantia&&<span className="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-semibold">s</span>}</td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 whitespace-nowrap">{s.nCalidad}</td>
+                    <td className="px-2 py-1.5 border border-gray-200">{s.nSAT&&<span className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">{s.nSAT}</span>}</td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-gray-600 max-w-[220px]"><div className="truncate" title={last}>{last.replace(/^-/,"").trim()}</div></td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-gray-500 max-w-[100px]"><div className="truncate">{s.revision}</div></td>
+                    <td className="px-2 py-1.5 border border-gray-200 text-center">{s.terminado&&<span className="bg-green-500 text-white px-1.5 py-0.5 rounded font-bold">S</span>}</td>
+                    <td className="px-2 py-1.5 border border-gray-200">
+                      <button onClick={e=>{e.stopPropagation();setConfirmDel(s.id);}}
+                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 px-1">🗑</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {modal && <SATModal sat={modal} onSave={save} onClose={()=>setModal(null)}/>}
+
+      {confirmDel && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <p className="font-semibold text-gray-800 mb-1">¿Eliminar este SAT?</p>
+            <p className="text-sm text-gray-500 mb-5">Esta acción no se puede deshacer.</p>
+            <div className="flex gap-3">
+              <button onClick={()=>del(confirmDel)} className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-semibold text-sm">Eliminar</button>
+              <button onClick={()=>setConfirmDel(null)} className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-semibold text-sm">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
