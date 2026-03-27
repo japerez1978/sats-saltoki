@@ -21,13 +21,58 @@ function fmt(iso) {
 
 function isoFromDisplay(str) {
   if (!str) return "";
-  const s = String(str);
-  const p = s.split("/");
-  if (p.length===3) {
-    let [d,m,y]=p; if(y.length===2) y="20"+y;
-    return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
-  }
+  const s = String(str).trim();
+
+  // Already ISO: 2025-03-15
   if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.slice(0,10);
+
+  // Excel serial number
+  if (s.match(/^\d{5}$/)) {
+    try {
+      const date = XLSX.SSF.parse_date_code(Number(s));
+      if (date) return `${date.y}-${String(date.m).padStart(2,"0")}-${String(date.d).padStart(2,"0")}`;
+    } catch(e) {}
+  }
+
+  if (s.includes("/")) {
+    const p = s.split("/");
+    if (p.length === 3) {
+      let [a, b, c] = p;
+      // Normalize 2-digit year
+      if (c.length === 2) c = "20" + c;
+
+      // Detect mm/dd/yyyy (Windows) vs dd/mm/yyyy (Mac/Spain)
+      const na = parseInt(a), nb = parseInt(b);
+
+      // If first part > 12 it must be dd/mm/yyyy
+      if (na > 12) {
+        return `${c}-${b.padStart(2,"0")}-${a.padStart(2,"0")}`;
+      }
+      // If second part > 12 it must be mm/dd/yyyy
+      if (nb > 12) {
+        return `${c}-${a.padStart(2,"0")}-${b.padStart(2,"0")}`;
+      }
+      // Both ≤ 12: ambiguous — use locale heuristic.
+      // Excel on Windows exports mm/dd, on Mac dd/mm.
+      // We check if the result would be a valid plausible date.
+      // Prefer dd/mm/yyyy (Spanish format) but validate month range.
+      // If 'a' as month and 'b' as day is valid, treat as mm/dd (Windows).
+      // We pick dd/mm by default (Spanish) unless it produces invalid date.
+      const asMmDd = new Date(`${c}-${a.padStart(2,"0")}-${b.padStart(2,"0")}`);
+      const asDdMm = new Date(`${c}-${b.padStart(2,"0")}-${a.padStart(2,"0")}`);
+      // If dd/mm produces invalid date, use mm/dd
+      if (isNaN(asDdMm.getTime()) && !isNaN(asMmDd.getTime())) {
+        return `${c}-${a.padStart(2,"0")}-${b.padStart(2,"0")}`;
+      }
+      // Default: Spanish dd/mm/yyyy
+      return `${c}-${b.padStart(2,"0")}-${a.padStart(2,"0")}`;
+    }
+  }
+
+  // Try native Date parse as last resort
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+
   return "";
 }
 
