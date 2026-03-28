@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabase";
 
-const STORAGE_KEY = "sats_saltoki_v5";
 const COLS = ["Fecha","Referencia","Artículo","Proveedor","Uds","Cliente","GARANTIA","Nº Calidad","SAT","Acciones","Revisión","Terminado"];
+const BUCKET = "SAT-FOTOS";
 
 const emptyForm = () => ({
   id: Date.now(),
@@ -15,17 +15,17 @@ const emptyForm = () => ({
 });
 
 const toRow = (s) => ({
-  fecha:      s.fecha||null, referencia:s.referencia, articulo:s.articulo,
-  proveedor:  s.proveedor, uds:parseInt(s.uds)||1, cliente:s.cliente,
-  garantia:   !!s.garantia, n_calidad:s.nCalidad, n_sat:s.nSAT,
-  acciones:   s.acciones, revision:s.revision, terminado:!!s.terminado, fotos:s.fotos||[],
+  fecha: s.fecha||null, referencia: s.referencia, articulo: s.articulo,
+  proveedor: s.proveedor, uds: parseInt(s.uds)||1, cliente: s.cliente,
+  garantia: !!s.garantia, n_calidad: s.nCalidad, n_sat: s.nSAT,
+  acciones: s.acciones, revision: s.revision, terminado: !!s.terminado, fotos: s.fotos||[],
 });
 
 const fromRow = (r) => ({
-  id:r.id, fecha:r.fecha||"", referencia:r.referencia||"", articulo:r.articulo||"",
-  proveedor:r.proveedor||"", uds:r.uds||1, cliente:r.cliente||"",
-  garantia:!!r.garantia, nCalidad:r.n_calidad||"", nSAT:r.n_sat||"",
-  acciones:r.acciones||"", revision:r.revision||"", terminado:!!r.terminado, fotos:r.fotos||[],
+  id: r.id, fecha: r.fecha||"", referencia: r.referencia||"", articulo: r.articulo||"",
+  proveedor: r.proveedor||"", uds: r.uds||1, cliente: r.cliente||"",
+  garantia: !!r.garantia, nCalidad: r.n_calidad||"", nSAT: r.n_sat||"",
+  acciones: r.acciones||"", revision: r.revision||"", terminado: !!r.terminado, fotos: r.fotos||[],
 });
 
 function fmt(iso) {
@@ -62,41 +62,58 @@ function isoFromDisplay(str, dateFormat="dmy") {
 }
 
 function todayStr() {
-  const d=new Date();
+  const d = new Date();
   return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getFullYear()).slice(2)}`;
 }
 
 function lastLine(text) {
   if (!text) return "";
-  const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);
+  const lines = text.split("\n").map(l=>l.trim()).filter(Boolean);
   return lines[lines.length-1]||"";
 }
 
 function importFromWorkbook(wb, dateFormat="dmy") {
-  const ws=wb.Sheets[wb.SheetNames[0]];
-  const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
-  if(rows.length<2) return [];
-  const header=rows[0].map(h=>String(h).trim().toLowerCase());
-  const idx=(...names)=>{for(const n of names){const i=header.findIndex(h=>h.includes(n.toLowerCase()));if(i>=0)return i;}return -1;};
-  const iF=idx("fecha"),iRef=idx("referencia"),iArt=idx("artículo","articulo"),iPro=idx("proveedor");
-  const iUds=idx("uds"),iCli=idx("cliente"),iGar=idx("garantia","garantía");
-  const iCal=idx("calidad","devol","nº calidad"),iSAT=idx("sat");
-  const iAcc=idx("acciones","accion"),iRev=idx("revisión","revision"),iTer=idx("terminado");
-  return rows.slice(1).filter(r=>r.some(c=>c!=="")).map((r,i)=>{
-    const get=i=>i>=0?String(r[i]??"").trim():"";
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
+  if (rows.length<2) return [];
+  const header = rows[0].map(h=>String(h).trim().toLowerCase());
+  const idx = (...names) => {
+    for (const n of names) {
+      const i = header.findIndex(h=>h.includes(n.toLowerCase()));
+      if (i>=0) return i;
+    }
+    return -1;
+  };
+  const iF=idx("fecha"), iRef=idx("referencia"), iArt=idx("artículo","articulo"), iPro=idx("proveedor");
+  const iUds=idx("uds"), iCli=idx("cliente"), iGar=idx("garantia","garantía");
+  const iCal=idx("calidad","devol","nº calidad"), iSAT=idx("sat");
+  const iAcc=idx("acciones","accion"), iRev=idx("revisión","revision"), iTer=idx("terminado");
+  return rows.slice(1).filter(r=>r.some(c=>c!=="")).map((r,i) => {
+    const get = i => i>=0 ? String(r[i]??"").trim() : "";
     return {
-      id:Date.now()+i, fecha:isoFromDisplay(get(iF),dateFormat), referencia:get(iRef),
-      articulo:get(iArt), proveedor:get(iPro), uds:get(iUds)||1, cliente:get(iCli),
-      garantia:["s","si","sí","true","1"].includes(get(iGar).toLowerCase()),
-      nCalidad:get(iCal), nSAT:get(iSAT), acciones:get(iAcc),
-      revision:get(iRev), terminado:["s","si","sí","true","1"].includes(get(iTer).toLowerCase()), fotos:[]
+      id: Date.now()+i, fecha: isoFromDisplay(get(iF),dateFormat), referencia: get(iRef),
+      articulo: get(iArt), proveedor: get(iPro), uds: get(iUds)||1, cliente: get(iCli),
+      garantia: ["s","si","sí","true","1"].includes(get(iGar).toLowerCase()),
+      nCalidad: get(iCal), nSAT: get(iSAT), acciones: get(iAcc),
+      revision: get(iRev), terminado: ["s","si","sí","true","1"].includes(get(iTer).toLowerCase()), fotos:[]
     };
   });
 }
 
-// ---- Storage helpers ----
-const BUCKET = "SAT-FOTOS";
+function exportToExcel(sats) {
+  const data = [COLS, ...sats.map(s=>[
+    fmt(s.fecha), s.referencia, s.articulo, s.proveedor, s.uds, s.cliente,
+    s.garantia?"s":"", s.nCalidad, s.nSAT, (s.acciones||"").replace(/\n/g," | "),
+    s.revision, s.terminado?"S":""
+  ])];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws["!cols"] = [70,100,220,180,40,70,60,100,90,350,120,70].map(w=>({wch:Math.round(w/7)}));
+  XLSX.utils.book_append_sheet(wb, ws, "SATs");
+  XLSX.writeFile(wb, `SATs_Saltoki_Logrono_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
 
+// ---- Storage helpers ----
 async function uploadPhoto(file, satId) {
   const ext = file.name.split(".").pop();
   const path = `${satId}/${Date.now()}.${ext}`;
@@ -107,29 +124,15 @@ async function uploadPhoto(file, satId) {
 }
 
 async function deletePhoto(url) {
-  // Extract path from full URL
   const parts = url.split(`/${BUCKET}/`);
   if (parts.length < 2) return;
   const path = parts[1];
   await supabase.storage.from(BUCKET).remove([path]);
 }
 
-
-  const data=[COLS,...sats.map(s=>[
-    fmt(s.fecha),s.referencia,s.articulo,s.proveedor,s.uds,s.cliente,
-    s.garantia?"s":"",s.nCalidad,s.nSAT,(s.acciones||"").replace(/\n/g," | "),
-    s.revision,s.terminado?"S":""
-  ])];
-  const wb=XLSX.utils.book_new();
-  const ws=XLSX.utils.aoa_to_sheet(data);
-  ws["!cols"]=[70,100,220,180,40,70,60,100,90,350,120,70].map(w=>({wch:Math.round(w/7)}));
-  XLSX.utils.book_append_sheet(wb,ws,"SATs");
-  XLSX.writeFile(wb,`SATs_Saltoki_Logrono_${new Date().toISOString().slice(0,10)}.xlsx`);
-}
-
-// ---- Photo viewer ----
+// ---- Photo Viewer ----
 function PhotoViewer({ fotos, onClose }) {
-  const [idx,setIdx]=useState(0);
+  const [idx, setIdx] = useState(0);
   return (
     <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4" onClick={onClose}>
       <div className="relative max-w-3xl w-full" onClick={e=>e.stopPropagation()}>
@@ -142,10 +145,8 @@ function PhotoViewer({ fotos, onClose }) {
                 <button key={i} onClick={()=>setIdx(i)} className={`w-2.5 h-2.5 rounded-full ${i===idx?"bg-white":"bg-white/40"}`}/>
               ))}
             </div>
-            <button onClick={()=>setIdx(i=>(i-1+fotos.length)%fotos.length)}
-              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-10 h-10 text-xl">‹</button>
-            <button onClick={()=>setIdx(i=>(i+1)%fotos.length)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-10 h-10 text-xl">›</button>
+            <button onClick={()=>setIdx(i=>(i-1+fotos.length)%fotos.length)} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-10 h-10 text-xl">‹</button>
+            <button onClick={()=>setIdx(i=>(i+1)%fotos.length)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-10 h-10 text-xl">›</button>
           </>
         )}
       </div>
@@ -155,50 +156,47 @@ function PhotoViewer({ fotos, onClose }) {
 
 // ---- SAT Modal ----
 function SATModal({ sat, onSave, onClose }) {
-  const [form,setForm]=useState({...sat, fotos:sat.fotos||[]});
-  const [newAction,setNewAction]=useState("");
-  const [photoViewer,setPhotoViewer]=useState(false);
-  const [uploading,setUploading]=useState(false);
-  const logRef=useRef();
-  const photoRef=useRef();
-  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const [form, setForm] = useState({...sat, fotos: sat.fotos||[]});
+  const [newAction, setNewAction] = useState("");
+  const [photoViewer, setPhotoViewer] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const logRef = useRef();
+  const photoRef = useRef();
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  const addAction=()=>{
-    const t=newAction.trim(); if(!t) return;
-    const line=`-(${todayStr()}) ${t}`;
-    setForm(f=>({...f,acciones:f.acciones?f.acciones+"\n"+line:line}));
+  const addAction = () => {
+    const t = newAction.trim(); if (!t) return;
+    const line = `-(${todayStr()}) ${t}`;
+    setForm(f=>({...f, acciones: f.acciones ? f.acciones+"\n"+line : line}));
     setNewAction("");
-    setTimeout(()=>logRef.current?.scrollTo(0,99999),50);
+    setTimeout(()=>logRef.current?.scrollTo(0,99999), 50);
   };
 
-  const handlePhotos=async(e)=>{
-    const files=Array.from(e.target.files);
-    if(!files.length) return;
+  const handlePhotos = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
     setUploading(true);
     try {
-      // Use existing id if editing, temp id if new
-      const satId = typeof sat.id === "number" && sat.id > 1700000000000
-        ? `tmp_${sat.id}` : String(sat.id);
-      const urls = await Promise.all(files.map(f => uploadPhoto(f, satId)));
-      setForm(f=>({...f, fotos:[...(f.fotos||[]),...urls]}));
+      const satId = typeof sat.id==="number" && sat.id>1700000000000 ? `tmp_${sat.id}` : String(sat.id);
+      const urls = await Promise.all(files.map(f=>uploadPhoto(f, satId)));
+      setForm(f=>({...f, fotos: [...(f.fotos||[]), ...urls]}));
     } catch(err) {
       alert("Error subiendo foto: "+err.message);
     } finally {
       setUploading(false);
     }
-    e.target.value="";
+    e.target.value = "";
   };
 
-  const removePhoto=async(i)=>{
+  const removePhoto = async (i) => {
     const url = form.fotos[i];
-    // Delete from storage if it's a real URL (not base64)
     if (url.startsWith("http")) {
-      try { await deletePhoto(url); } catch(e) { console.warn("No se pudo borrar del storage", e); }
+      try { await deletePhoto(url); } catch(e) { console.warn(e); }
     }
-    setForm(f=>({...f,fotos:f.fotos.filter((_,j)=>j!==i)}));
+    setForm(f=>({...f, fotos: f.fotos.filter((_,j)=>j!==i)}));
   };
 
-  const lines=(form.acciones||"").split("\n").filter(Boolean);
+  const lines = (form.acciones||"").split("\n").filter(Boolean);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -305,7 +303,7 @@ function SATModal({ sat, onSave, onClose }) {
           </div>
         </div>
         <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex gap-3">
-          <button onClick={()=>{if(!form.articulo.trim())return; onSave(form);}}
+          <button onClick={()=>{ if(!form.articulo.trim()) return; onSave(form); }}
             className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-semibold text-sm">Guardar SAT</button>
           <button onClick={onClose} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm">Cancelar</button>
         </div>
@@ -315,25 +313,22 @@ function SATModal({ sat, onSave, onClose }) {
   );
 }
 
-// ---- Bulk action modal ----
+// ---- Bulk Modal ----
 function BulkModal({ count, onAction, onClose }) {
   const [action, setAction] = useState("");
   const [value, setValue] = useState("");
-
   const actions = [
-    { key:"delete",     label:"🗑 Eliminar seleccionados",        needsValue:false },
-    { key:"terminado",  label:"✅ Marcar como Terminado",          needsValue:false },
-    { key:"noterminado",label:"↩️ Marcar como No Terminado",      needsValue:false },
-    { key:"garantia",   label:"⭐ Marcar con Garantía",           needsValue:false },
-    { key:"nogarantia", label:"⭐ Quitar Garantía",               needsValue:false },
-    { key:"proveedor",  label:"📦 Cambiar Proveedor",             needsValue:true  },
-    { key:"cliente",    label:"👤 Cambiar Cliente",               needsValue:true  },
-    { key:"revision",   label:"📝 Cambiar Revisión",              needsValue:true  },
+    { key:"delete",      label:"🗑 Eliminar seleccionados",   needsValue:false },
+    { key:"terminado",   label:"✅ Marcar como Terminado",    needsValue:false },
+    { key:"noterminado", label:"↩️ Marcar como No Terminado", needsValue:false },
+    { key:"garantia",    label:"⭐ Marcar con Garantía",      needsValue:false },
+    { key:"nogarantia",  label:"⭐ Quitar Garantía",          needsValue:false },
+    { key:"proveedor",   label:"📦 Cambiar Proveedor",        needsValue:true  },
+    { key:"cliente",     label:"👤 Cambiar Cliente",          needsValue:true  },
+    { key:"revision",    label:"📝 Cambiar Revisión",         needsValue:true  },
   ];
-
   const selected = actions.find(a=>a.key===action);
   const canApply = action && (!selected?.needsValue || value.trim());
-
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e=>e.stopPropagation()}>
@@ -348,7 +343,7 @@ function BulkModal({ count, onAction, onClose }) {
           <div>
             <label className="block text-xs text-gray-500 mb-1 font-medium">¿Qué quieres hacer?</label>
             <select className="w-full border rounded-xl px-3 py-2.5 text-sm text-gray-700 bg-white"
-              value={action} onChange={e=>{setAction(e.target.value); setValue("");}}>
+              value={action} onChange={e=>{ setAction(e.target.value); setValue(""); }}>
               <option value="">— Selecciona una acción —</option>
               {actions.map(a=><option key={a.key} value={a.key}>{a.label}</option>)}
             </select>
@@ -362,20 +357,15 @@ function BulkModal({ count, onAction, onClose }) {
           )}
           {action==="delete" && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
-              ⚠️ Esta acción eliminará permanentemente los {count} registros seleccionados. No se puede deshacer.
+              ⚠️ Esta acción eliminará permanentemente los {count} registros. No se puede deshacer.
             </div>
           )}
         </div>
         <div className="px-6 py-4 border-t flex gap-3">
-          <button onClick={()=>canApply&&onAction(action,value)}
-            disabled={!canApply}
+          <button onClick={()=>canApply&&onAction(action,value)} disabled={!canApply}
             className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition
-              ${canApply
-                ? action==="delete"
-                  ? "bg-red-600 hover:bg-red-700 text-white"
-                  : "bg-blue-600 hover:bg-blue-700 text-white"
-                : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
-            {action==="delete" ? "Eliminar" : "Aplicar"}
+              ${canApply ? action==="delete" ? "bg-red-600 hover:bg-red-700 text-white" : "bg-blue-600 hover:bg-blue-700 text-white" : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
+            {action==="delete"?"Eliminar":"Aplicar"}
           </button>
           <button onClick={onClose} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm">Cancelar</button>
         </div>
@@ -384,26 +374,23 @@ function BulkModal({ count, onAction, onClose }) {
   );
 }
 
-// ---- Column header ----
+// ---- Column Header with filter ----
 function ColHeader({ label, fieldKey, sats, filters, setFilters, sortKey, sortDir, onSort }) {
-  const [open,setOpen]=useState(false);
-  const [search,setSearch]=useState("");
-  const ref=useRef();
-
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef();
   useEffect(()=>{
-    const h=e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
+    const h = e => { if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown",h);
-    return()=>document.removeEventListener("mousedown",h);
+    return () => document.removeEventListener("mousedown",h);
   },[]);
-
-  const active=!!filters[fieldKey];
-  let options=[];
+  const active = !!filters[fieldKey];
+  let options = [];
   if (fieldKey==="garantia"||fieldKey==="terminado") options=["Sí","No"];
   else options=[...new Set(sats.map(s=>String(s[fieldKey]||"")))].filter(Boolean).sort();
-  const filtered=search?options.filter(o=>o.toLowerCase().includes(search.toLowerCase())):options;
-  const select=(v)=>{setFilters(f=>({...f,[fieldKey]:v}));setOpen(false);setSearch("");};
-  const clear=(e)=>{e.stopPropagation();setFilters(f=>({...f,[fieldKey]:""}));};
-
+  const filtered = search ? options.filter(o=>o.toLowerCase().includes(search.toLowerCase())) : options;
+  const select = (v) => { setFilters(f=>({...f,[fieldKey]:v})); setOpen(false); setSearch(""); };
+  const clear = (e) => { e.stopPropagation(); setFilters(f=>({...f,[fieldKey]:""})); };
   return (
     <div className="relative flex items-center gap-1" ref={ref}>
       <button onClick={()=>onSort(fieldKey)} className="flex items-center gap-1 hover:text-blue-200 transition">
@@ -412,7 +399,7 @@ function ColHeader({ label, fieldKey, sats, filters, setFilters, sortKey, sortDi
       </button>
       <button onClick={()=>setOpen(o=>!o)}
         className={`ml-0.5 rounded px-1 transition text-[11px] ${active?"bg-blue-400 text-white":"opacity-50 hover:opacity-100"}`}>▾</button>
-      {active && <button onClick={clear} className="text-blue-300 hover:text-white text-[11px] leading-none">×</button>}
+      {active && <button onClick={clear} className="text-blue-300 hover:text-white text-[11px]">×</button>}
       {open && (
         <div className="absolute top-full left-0 mt-1 bg-white border rounded-xl shadow-2xl z-50 w-52 py-2" onClick={e=>e.stopPropagation()}>
           <div className="px-2 pb-2">
@@ -435,166 +422,163 @@ function ColHeader({ label, fieldKey, sats, filters, setFilters, sortKey, sortDi
   );
 }
 
-// ---- App ----
+// ---- Main App ----
 export default function App() {
-  const [sats,setSats]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [modal,setModal]=useState(null);
-  const [bulkModal,setBulkModal]=useState(false);
-  const [selected,setSelected]=useState(new Set()); // ids seleccionados
-  const [filtro,setFiltro]=useState("todos");
-  const [busqueda,setBusqueda]=useState("");
-  const [confirmDel,setConfirmDel]=useState(null);
-  const [msg,setMsg]=useState("");
-  const [dateFormat,setDateFormat]=useState("dmy");
-  const fileRef=useRef();
+  const [sats, setSats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);
+  const [bulkModal, setBulkModal] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [filtro, setFiltro] = useState("todos");
+  const [busqueda, setBusqueda] = useState("");
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [dateFormat, setDateFormat] = useState("dmy");
+  const fileRef = useRef();
 
-  const [filters,setFilters]=useState({
-    proveedor:"",cliente:"",garantia:"",terminado:"",
-    referencia:"",articulo:"",nCalidad:"",nSAT:""
+  const [filters, setFilters] = useState({
+    proveedor:"", cliente:"", garantia:"", terminado:"",
+    referencia:"", articulo:"", nCalidad:"", nSAT:""
   });
-  const [sortKey,setSortKey]=useState("fecha");
-  const [sortDir,setSortDir]=useState("desc");
-  const onSort=(key)=>{ if(sortKey===key) setSortDir(d=>d==="asc"?"desc":"asc"); else{setSortKey(key);setSortDir("asc");} };
+  const [sortKey, setSortKey] = useState("fecha");
+  const [sortDir, setSortDir] = useState("desc");
 
-  const showMsg=(m,ms=4000)=>{setMsg(m);setTimeout(()=>setMsg(""),ms);};
+  const onSort = (key) => {
+    if (sortKey===key) setSortDir(d=>d==="asc"?"desc":"asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const showMsg = (m, ms=4000) => { setMsg(m); setTimeout(()=>setMsg(""), ms); };
 
   useEffect(()=>{
     (async()=>{
       setLoading(true);
-      const{data,error}=await supabase.from("sats").select("*").order("fecha",{ascending:false});
-      if(error) showMsg("❌ Error cargando: "+error.message,8000);
+      const { data, error } = await supabase.from("sats").select("*").order("fecha",{ascending:false});
+      if (error) showMsg("❌ Error cargando: "+error.message, 8000);
       else setSats((data||[]).map(fromRow));
       setLoading(false);
     })();
   },[]);
 
-  const save=async(form)=>{
-    const row=toRow(form);
+  const save = async (form) => {
+    const row = toRow(form);
     let error;
-    if(typeof form.id==="number"&&form.id>1700000000000){
-      const res=await supabase.from("sats").insert([row]).select();
-      error=res.error;
-      if(!error&&res.data?.[0]) setSats(prev=>[fromRow(res.data[0]),...prev]);
+    if (typeof form.id==="number" && form.id>1700000000000) {
+      const res = await supabase.from("sats").insert([row]).select();
+      error = res.error;
+      if (!error && res.data?.[0]) setSats(prev=>[fromRow(res.data[0]), ...prev]);
     } else {
-      const res=await supabase.from("sats").update(row).eq("id",form.id).select();
-      error=res.error;
-      if(!error&&res.data?.[0]) setSats(prev=>prev.map(s=>s.id===form.id?fromRow(res.data[0]):s));
+      const res = await supabase.from("sats").update(row).eq("id",form.id).select();
+      error = res.error;
+      if (!error && res.data?.[0]) setSats(prev=>prev.map(s=>s.id===form.id?fromRow(res.data[0]):s));
     }
-    if(error){showMsg("❌ Error guardando: "+error.message,8000);return;}
+    if (error) { showMsg("❌ Error guardando: "+error.message, 8000); return; }
     setModal(null);
   };
 
-  const del=async(id)=>{
-    const{error}=await supabase.from("sats").delete().eq("id",id);
-    if(error){showMsg("❌ Error eliminando: "+error.message,8000);return;}
+  const del = async (id) => {
+    const { error } = await supabase.from("sats").delete().eq("id",id);
+    if (error) { showMsg("❌ Error eliminando: "+error.message, 8000); return; }
     setSats(s=>s.filter(x=>x.id!==id));
     setConfirmDel(null);
   };
 
-  // Bulk action handler
-  const handleBulkAction=async(action,value)=>{
-    const ids=[...selected];
-    if(ids.length===0) return;
+  const handleBulkAction = async (action, value) => {
+    const ids = [...selected];
+    if (!ids.length) return;
     setBulkModal(false);
-
-    if(action==="delete"){
-      const{error}=await supabase.from("sats").delete().in("id",ids);
-      if(error){showMsg("❌ Error: "+error.message,8000);return;}
+    if (action==="delete") {
+      const { error } = await supabase.from("sats").delete().in("id",ids);
+      if (error) { showMsg("❌ Error: "+error.message, 8000); return; }
       setSats(s=>s.filter(x=>!ids.includes(x.id)));
       showMsg(`✅ ${ids.length} registros eliminados.`);
     } else {
-      // Build update patch
-      const patch={};
-      if(action==="terminado")   patch.terminado=true;
-      if(action==="noterminado") patch.terminado=false;
-      if(action==="garantia")    patch.garantia=true;
-      if(action==="nogarantia")  patch.garantia=false;
-      if(action==="proveedor")   patch.proveedor=value;
-      if(action==="cliente")     patch.cliente=value;
-      if(action==="revision")    patch.revision=value;
-
-      const{error}=await supabase.from("sats").update(patch).in("id",ids);
-      if(error){showMsg("❌ Error: "+error.message,8000);return;}
-      // Update local state
+      const patch = {};
+      if (action==="terminado")    patch.terminado=true;
+      if (action==="noterminado")  patch.terminado=false;
+      if (action==="garantia")     patch.garantia=true;
+      if (action==="nogarantia")   patch.garantia=false;
+      if (action==="proveedor")    patch.proveedor=value;
+      if (action==="cliente")      patch.cliente=value;
+      if (action==="revision")     patch.revision=value;
+      const { error } = await supabase.from("sats").update(patch).in("id",ids);
+      if (error) { showMsg("❌ Error: "+error.message, 8000); return; }
       setSats(prev=>prev.map(s=>{
-        if(!ids.includes(s.id)) return s;
-        const updated={...s};
-        if("terminado" in patch) updated.terminado=patch.terminado;
-        if("garantia"  in patch) updated.garantia=patch.garantia;
-        if("proveedor" in patch) updated.proveedor=patch.proveedor;
-        if("cliente"   in patch) updated.cliente=patch.cliente;
-        if("revision"  in patch) updated.revision=patch.revision;
-        return updated;
+        if (!ids.includes(s.id)) return s;
+        const u = {...s};
+        if ("terminado" in patch) u.terminado=patch.terminado;
+        if ("garantia"  in patch) u.garantia=patch.garantia;
+        if ("proveedor" in patch) u.proveedor=patch.proveedor;
+        if ("cliente"   in patch) u.cliente=patch.cliente;
+        if ("revision"  in patch) u.revision=patch.revision;
+        return u;
       }));
       showMsg(`✅ ${ids.length} registros actualizados.`);
     }
     setSelected(new Set());
   };
 
-  const handleImport=(e)=>{
-    const file=e.target.files[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=async ev=>{
-      try{
-        const wb=XLSX.read(ev.target.result,{type:"array",cellDates:true});
-        const imported=importFromWorkbook(wb,dateFormat);
-        if(!imported.length){showMsg("⚠️ No se encontraron datos.");return;}
-        showMsg("⏳ Importando "+imported.length+" registros...",30000);
-        const rows=imported.map(toRow);
-        const{error}=await supabase.from("sats").insert(rows);
-        if(error){showMsg("❌ Error importando: "+error.message,8000);return;}
-        const{data}=await supabase.from("sats").select("*").order("fecha",{ascending:false});
+  const handleImport = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result,{type:"array",cellDates:true});
+        const imported = importFromWorkbook(wb, dateFormat);
+        if (!imported.length) { showMsg("⚠️ No se encontraron datos."); return; }
+        showMsg("⏳ Importando "+imported.length+" registros...", 30000);
+        const rows = imported.map(toRow);
+        const { error } = await supabase.from("sats").insert(rows);
+        if (error) { showMsg("❌ Error importando: "+error.message, 8000); return; }
+        const { data } = await supabase.from("sats").select("*").order("fecha",{ascending:false});
         setSats((data||[]).map(fromRow));
         showMsg(`✅ ${imported.length} registros importados correctamente.`);
-      }catch(err){showMsg("❌ Error: "+err.message,8000);}
+      } catch(err) { showMsg("❌ Error: "+err.message, 8000); }
     };
     reader.readAsArrayBuffer(file);
-    e.target.value="";
+    e.target.value = "";
   };
 
-  const anyFilter=Object.values(filters).some(Boolean);
+  const anyFilter = Object.values(filters).some(Boolean);
 
-  const filtered=sats
+  const filtered = sats
     .filter(s=>{
-      const mF=filtro==="todos"||(filtro==="activos"?!s.terminado:s.terminado);
-      const q=busqueda.toLowerCase();
-      const mB=!q||[s.articulo,s.proveedor,s.cliente,s.referencia,s.nCalidad,s.nSAT,s.acciones].some(v=>(v||"").toLowerCase().includes(q));
-      const mCF=Object.entries(filters).every(([k,v])=>{
-        if(!v) return true;
-        if(k==="garantia") return v==="Sí"?s.garantia:!s.garantia;
-        if(k==="terminado") return v==="Sí"?s.terminado:!s.terminado;
+      const mF = filtro==="todos"||(filtro==="activos"?!s.terminado:s.terminado);
+      const q = busqueda.toLowerCase();
+      const mB = !q||[s.articulo,s.proveedor,s.cliente,s.referencia,s.nCalidad,s.nSAT,s.acciones].some(v=>(v||"").toLowerCase().includes(q));
+      const mCF = Object.entries(filters).every(([k,v])=>{
+        if (!v) return true;
+        if (k==="garantia") return v==="Sí"?s.garantia:!s.garantia;
+        if (k==="terminado") return v==="Sí"?s.terminado:!s.terminado;
         return String(s[k]||"")===v;
       });
-      return mF&&mB&&mCF;
+      return mF && mB && mCF;
     })
     .sort((a,b)=>{
-      let va=String(a[sortKey]||""),vb=String(b[sortKey]||"");
-      if(sortKey==="fecha"){va=a.fecha||"";vb=b.fecha||"";}
-      const cmp=va.localeCompare(vb,"es",{numeric:true});
+      let va=String(a[sortKey]||""), vb=String(b[sortKey]||"");
+      if (sortKey==="fecha") { va=a.fecha||""; vb=b.fecha||""; }
+      const cmp = va.localeCompare(vb,"es",{numeric:true});
       return sortDir==="asc"?cmp:-cmp;
     });
 
-  // Select helpers
   const allVisibleSelected = filtered.length>0 && filtered.every(s=>selected.has(s.id));
   const toggleAll = () => {
-    if(allVisibleSelected) setSelected(new Set());
+    if (allVisibleSelected) setSelected(new Set());
     else setSelected(new Set(filtered.map(s=>s.id)));
   };
   const toggleOne = (id) => {
     setSelected(prev=>{
-      const next=new Set(prev);
-      next.has(id)?next.delete(id):next.add(id);
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
 
   const total=sats.length, activos=sats.filter(s=>!s.terminado).length, term=sats.filter(s=>s.terminado).length;
-  const hProps={sats,filters,setFilters,sortKey,sortDir,onSort};
+  const hProps = { sats, filters, setFilters, sortKey, sortDir, onSort };
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
-      {/* Header */}
       <div className="bg-white border-b shadow-sm sticky top-0 z-40 px-3 py-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
@@ -624,21 +608,13 @@ export default function App() {
             <button onClick={()=>setModal(emptyForm())} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl text-sm font-semibold shadow">+ Nuevo</button>
           </div>
         </div>
-
-        {/* Bulk action bar — aparece cuando hay seleccionados */}
         {selected.size>0 && (
           <div className="mt-2 flex items-center gap-3 bg-blue-600 text-white rounded-xl px-4 py-2.5">
             <span className="text-sm font-semibold">{selected.size} seleccionado{selected.size!==1?"s":""}</span>
-            <button onClick={()=>setBulkModal(true)}
-              className="bg-white text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm font-semibold transition">
-              ⚡ Acción masiva
-            </button>
-            <button onClick={()=>setSelected(new Set())} className="ml-auto text-blue-200 hover:text-white text-sm">
-              Deseleccionar todo
-            </button>
+            <button onClick={()=>setBulkModal(true)} className="bg-white text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm font-semibold transition">⚡ Acción masiva</button>
+            <button onClick={()=>setSelected(new Set())} className="ml-auto text-blue-200 hover:text-white text-sm">Deseleccionar todo</button>
           </div>
         )}
-
         {anyFilter && (
           <div className="mt-2 flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-500 font-medium">Filtros:</span>
@@ -655,7 +631,6 @@ export default function App() {
         {msg && <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800">{msg}</div>}
       </div>
 
-      {/* Table */}
       <div className="px-2 py-3">
         {loading ? (
           <div className="text-center py-20 text-gray-400">
@@ -673,27 +648,26 @@ export default function App() {
             <div className="overflow-x-auto rounded-xl shadow">
               <table className="w-full text-xs border-collapse" style={{tableLayout:"fixed"}}>
                 <colgroup>
-                  <col style={{width:"3%"}}/>   {/* checkbox */}
-                  <col style={{width:"6%"}}/>   {/* Fecha */}
-                  <col style={{width:"8%"}}/>   {/* Referencia */}
-                  <col style={{width:"15%"}}/>  {/* Artículo */}
-                  <col style={{width:"11%"}}/>  {/* Proveedor */}
-                  <col style={{width:"3%"}}/>   {/* Uds */}
-                  <col style={{width:"6%"}}/>   {/* Cliente */}
-                  <col style={{width:"5%"}}/>   {/* Garantía */}
-                  <col style={{width:"7%"}}/>   {/* Nº Calidad */}
-                  <col style={{width:"6%"}}/>   {/* SAT */}
-                  <col style={{width:"17%"}}/>  {/* Última acción */}
-                  <col style={{width:"5%"}}/>   {/* Revisión */}
-                  <col style={{width:"5%"}}/>   {/* Terminado */}
-                  <col style={{width:"4%"}}/>   {/* Fotos */}
-                  <col style={{width:"3%"}}/>   {/* Del */}
+                  <col style={{width:"3%"}}/>
+                  <col style={{width:"6%"}}/>
+                  <col style={{width:"8%"}}/>
+                  <col style={{width:"15%"}}/>
+                  <col style={{width:"11%"}}/>
+                  <col style={{width:"3%"}}/>
+                  <col style={{width:"6%"}}/>
+                  <col style={{width:"5%"}}/>
+                  <col style={{width:"7%"}}/>
+                  <col style={{width:"6%"}}/>
+                  <col style={{width:"17%"}}/>
+                  <col style={{width:"5%"}}/>
+                  <col style={{width:"5%"}}/>
+                  <col style={{width:"4%"}}/>
+                  <col style={{width:"3%"}}/>
                 </colgroup>
                 <thead>
                   <tr className="bg-gray-700 text-white text-[11px]">
                     <th className="px-2 py-2 border border-gray-600">
-                      <input type="checkbox" checked={allVisibleSelected} onChange={toggleAll}
-                        className="w-3.5 h-3.5 accent-blue-400 cursor-pointer"/>
+                      <input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} className="w-3.5 h-3.5 accent-blue-400 cursor-pointer"/>
                     </th>
                     {[
                       {label:"Fecha",key:"fecha"},{label:"Referencia",key:"referencia"},
@@ -713,14 +687,13 @@ export default function App() {
                 </thead>
                 <tbody>
                   {filtered.map((s,i)=>{
-                    const last=lastLine(s.acciones);
-                    const isSel=selected.has(s.id);
-                    const bg=isSel?"bg-blue-50":s.terminado?"bg-green-50":i%2===0?"bg-white":"bg-gray-50";
+                    const last = lastLine(s.acciones);
+                    const isSel = selected.has(s.id);
+                    const bg = isSel?"bg-blue-50":s.terminado?"bg-green-50":i%2===0?"bg-white":"bg-gray-50";
                     return (
                       <tr key={s.id} className={`${bg} hover:bg-blue-50 transition group cursor-pointer`}>
                         <td className="px-2 py-1.5 border border-gray-200 text-center" onClick={e=>e.stopPropagation()}>
-                          <input type="checkbox" checked={isSel} onChange={()=>toggleOne(s.id)}
-                            className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"/>
+                          <input type="checkbox" checked={isSel} onChange={()=>toggleOne(s.id)} className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"/>
                         </td>
                         <td className="px-2 py-1.5 border border-gray-200 whitespace-nowrap font-medium text-gray-700" onClick={()=>setModal({...s})}>{fmt(s.fecha)}</td>
                         <td className="px-2 py-1.5 border border-gray-200 font-mono text-gray-600 truncate" onClick={()=>setModal({...s})}>{s.referencia}</td>
@@ -736,12 +709,11 @@ export default function App() {
                         <td className="px-2 py-1.5 border border-gray-200 text-center" onClick={()=>setModal({...s})}>{s.terminado&&<span className="bg-green-500 text-white px-1 py-0.5 rounded font-bold text-[10px]">S</span>}</td>
                         <td className="px-2 py-1.5 border border-gray-200 text-center" onClick={()=>setModal({...s})}>
                           {(s.fotos||[]).length>0
-                            ?<span className="bg-blue-100 text-blue-700 px-1 py-0.5 rounded text-[10px] font-medium">📷{s.fotos.length}</span>
-                            :<span className="text-gray-300">—</span>}
+                            ? <span className="bg-blue-100 text-blue-700 px-1 py-0.5 rounded text-[10px] font-medium">📷{s.fotos.length}</span>
+                            : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-1 py-1.5 border border-gray-200 text-center">
-                          <button onClick={e=>{e.stopPropagation();setConfirmDel(s.id);}}
-                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600">🗑</button>
+                          <button onClick={e=>{e.stopPropagation();setConfirmDel(s.id);}} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600">🗑</button>
                         </td>
                       </tr>
                     );
