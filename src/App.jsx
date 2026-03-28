@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { supabase } from "./supabase";
 
 const COLS = ["Fecha","Referencia","Artículo","Proveedor","Uds","Cliente","GARANTIA","Nº Calidad","SAT","Acciones","Revisión","Terminado"];
-const BUCKET = "SAT-FOTOS";
+const BUCKET = "sat-fotos";
 
 const emptyForm = () => ({
   id: Date.now(),
