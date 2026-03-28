@@ -158,6 +158,7 @@ function SATModal({ sat, onSave, onClose }) {
   const [form,setForm]=useState({...sat, fotos:sat.fotos||[]});
   const [newAction,setNewAction]=useState("");
   const [photoViewer,setPhotoViewer]=useState(false);
+  const [uploading,setUploading]=useState(false);
   const logRef=useRef();
   const photoRef=useRef();
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
@@ -170,16 +171,33 @@ function SATModal({ sat, onSave, onClose }) {
     setTimeout(()=>logRef.current?.scrollTo(0,99999),50);
   };
 
-  const handlePhotos=(e)=>{
-    Array.from(e.target.files).forEach(file=>{
-      const reader=new FileReader();
-      reader.onload=ev=>setForm(f=>({...f,fotos:[...(f.fotos||[]),ev.target.result]}));
-      reader.readAsDataURL(file);
-    });
+  const handlePhotos=async(e)=>{
+    const files=Array.from(e.target.files);
+    if(!files.length) return;
+    setUploading(true);
+    try {
+      // Use existing id if editing, temp id if new
+      const satId = typeof sat.id === "number" && sat.id > 1700000000000
+        ? `tmp_${sat.id}` : String(sat.id);
+      const urls = await Promise.all(files.map(f => uploadPhoto(f, satId)));
+      setForm(f=>({...f, fotos:[...(f.fotos||[]),...urls]}));
+    } catch(err) {
+      alert("Error subiendo foto: "+err.message);
+    } finally {
+      setUploading(false);
+    }
     e.target.value="";
   };
 
-  const removePhoto=(i)=>setForm(f=>({...f,fotos:f.fotos.filter((_,j)=>j!==i)}));
+  const removePhoto=async(i)=>{
+    const url = form.fotos[i];
+    // Delete from storage if it's a real URL (not base64)
+    if (url.startsWith("http")) {
+      try { await deletePhoto(url); } catch(e) { console.warn("No se pudo borrar del storage", e); }
+    }
+    setForm(f=>({...f,fotos:f.fotos.filter((_,j)=>j!==i)}));
+  };
+
   const lines=(form.acciones||"").split("\n").filter(Boolean);
 
   return (
@@ -258,9 +276,10 @@ function SATModal({ sat, onSave, onClose }) {
             <label className="block text-xs text-gray-500 mb-1 font-medium">Fotos</label>
             <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotos}/>
             {(form.fotos||[]).length===0 ? (
-              <button onClick={()=>photoRef.current.click()}
+              <button onClick={()=>photoRef.current.click()} disabled={uploading}
                 className="w-full border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-xl py-6 text-gray-400 hover:text-blue-500 text-sm transition flex flex-col items-center gap-2">
-                <span className="text-3xl">📷</span><span>Pulsa para añadir fotos</span>
+                <span className="text-3xl">{uploading?"⏳":"📷"}</span>
+                <span>{uploading?"Subiendo fotos...":"Pulsa para añadir fotos"}</span>
               </button>
             ) : (
               <div>
@@ -271,8 +290,10 @@ function SATModal({ sat, onSave, onClose }) {
                       <button onClick={()=>removePhoto(i)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs opacity-0 group-hover:opacity-100 flex items-center justify-center">×</button>
                     </div>
                   ))}
-                  <button onClick={()=>photoRef.current.click()}
-                    className="h-20 border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-lg text-gray-400 hover:text-blue-500 text-2xl flex items-center justify-center transition">+</button>
+                  <button onClick={()=>photoRef.current.click()} disabled={uploading}
+                    className="h-20 border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-lg text-gray-400 hover:text-blue-500 text-2xl flex items-center justify-center transition">
+                    {uploading?"⏳":"+"}
+                  </button>
                 </div>
                 <button onClick={()=>setPhotoViewer(true)} className="text-xs text-blue-500 hover:underline">Ver todas ({form.fotos.length})</button>
               </div>
