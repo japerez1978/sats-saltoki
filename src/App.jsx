@@ -95,7 +95,7 @@ function importFromWorkbook(wb, dateFormat="dmy") {
 }
 
 // ---- Storage helpers ----
-const BUCKET = "sat-fotos";
+const BUCKET = "SAT-FOTOS";
 
 async function uploadPhoto(file, satId) {
   const ext = file.name.split(".").pop();
