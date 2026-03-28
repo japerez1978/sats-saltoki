@@ -94,7 +94,27 @@ function importFromWorkbook(wb, dateFormat="dmy") {
   });
 }
 
-function exportToExcel(sats) {
+// ---- Storage helpers ----
+const BUCKET = "sat-fotos";
+
+async function uploadPhoto(file, satId) {
+  const ext = file.name.split(".").pop();
+  const path = `${satId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+async function deletePhoto(url) {
+  // Extract path from full URL
+  const parts = url.split(`/${BUCKET}/`);
+  if (parts.length < 2) return;
+  const path = parts[1];
+  await supabase.storage.from(BUCKET).remove([path]);
+}
+
+
   const data=[COLS,...sats.map(s=>[
     fmt(s.fecha),s.referencia,s.articulo,s.proveedor,s.uds,s.cliente,
     s.garantia?"s":"",s.nCalidad,s.nSAT,(s.acciones||"").replace(/\n/g," | "),
