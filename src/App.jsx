@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
+import { supabase } from "./supabase";
 
-const STORAGE_KEY = "sats_saltoki_v5";
+const STORAGE_KEY = "sats_saltoki_v5"; // fallback local
 const COLS = ["Fecha","Referencia","Artículo","Proveedor","Uds","Cliente","GARANTIA","Nº Calidad","SAT","Acciones","Revisión","Terminado"];
 
 const emptyForm = () => ({
@@ -356,9 +357,46 @@ function ColHeader({ label, fieldKey, sats, filters, setFilters, sortKey, sortDi
   );
 }
 
+// ---- Supabase helpers ----
+// Map app object → DB row
+const toRow = (s) => ({
+  fecha:      s.fecha || null,
+  referencia: s.referencia,
+  articulo:   s.articulo,
+  proveedor:  s.proveedor,
+  uds:        parseInt(s.uds)||1,
+  cliente:    s.cliente,
+  garantia:   !!s.garantia,
+  n_calidad:  s.nCalidad,
+  n_sat:      s.nSAT,
+  acciones:   s.acciones,
+  revision:   s.revision,
+  terminado:  !!s.terminado,
+  fotos:      s.fotos||[],
+});
+
+// Map DB row → app object
+const fromRow = (r) => ({
+  id:         r.id,
+  fecha:      r.fecha||"",
+  referencia: r.referencia||"",
+  articulo:   r.articulo||"",
+  proveedor:  r.proveedor||"",
+  uds:        r.uds||1,
+  cliente:    r.cliente||"",
+  garantia:   !!r.garantia,
+  nCalidad:   r.n_calidad||"",
+  nSAT:       r.n_sat||"",
+  acciones:   r.acciones||"",
+  revision:   r.revision||"",
+  terminado:  !!r.terminado,
+  fotos:      r.fotos||[],
+});
+
 // ---- App ----
 export default function App() {
-  const [sats, setSats] = useState(()=>{ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");}catch{return[];} });
+  const [sats, setSats] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [filtro, setFiltro] = useState("todos");
   const [busqueda, setBusqueda] = useState("");
@@ -366,13 +404,10 @@ export default function App() {
   const [msg, setMsg] = useState("");
   const fileRef = useRef();
 
-  // Column filters
   const [filters, setFilters] = useState({
     proveedor:"", cliente:"", garantia:"", terminado:"",
     referencia:"", articulo:"", nCalidad:"", nSAT:""
   });
-
-  // Sorting
   const [sortKey, setSortKey] = useState("fecha");
   const [sortDir, setSortDir] = useState("desc");
 
@@ -381,26 +416,68 @@ export default function App() {
     else { setSortKey(key); setSortDir("asc"); }
   };
 
-  useEffect(()=>{ localStorage.setItem(STORAGE_KEY,JSON.stringify(sats)); },[sats]);
+  const showMsg = (m, ms=4000) => { setMsg(m); setTimeout(()=>setMsg(""), ms); };
 
-  const save = (form) => {
-    setSats(prev=>{ const ex=prev.find(s=>s.id===form.id); return ex?prev.map(s=>s.id===form.id?form:s):[form,...prev]; });
+  // Load from Supabase on mount
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      const { data, error } = await supabase.from("sats").select("*").order("fecha", {ascending:false});
+      if (error) { showMsg("❌ Error cargando datos: "+error.message, 8000); }
+      else { setSats((data||[]).map(fromRow)); }
+      setLoading(false);
+    })();
+  },[]);
+
+  // Save (insert or update)
+  const save = async (form) => {
+    const row = toRow(form);
+    let error;
+    if (typeof form.id === "number" && form.id > 1700000000000) {
+      // new record (id is Date.now())
+      const res = await supabase.from("sats").insert([row]).select();
+      error = res.error;
+      if (!error && res.data?.[0]) {
+        setSats(prev => [fromRow(res.data[0]), ...prev]);
+      }
+    } else {
+      // existing record
+      const res = await supabase.from("sats").update(row).eq("id", form.id).select();
+      error = res.error;
+      if (!error && res.data?.[0]) {
+        setSats(prev => prev.map(s => s.id===form.id ? fromRow(res.data[0]) : s));
+      }
+    }
+    if (error) { showMsg("❌ Error guardando: "+error.message, 8000); return; }
     setModal(null);
   };
-  const del = (id) => { setSats(s=>s.filter(x=>x.id!==id)); setConfirmDel(null); };
 
+  // Delete
+  const del = async (id) => {
+    const { error } = await supabase.from("sats").delete().eq("id", id);
+    if (error) { showMsg("❌ Error eliminando: "+error.message, 8000); return; }
+    setSats(s=>s.filter(x=>x.id!==id));
+    setConfirmDel(null);
+  };
+
+  // Import Excel → insert all into Supabase
   const handleImport = (e) => {
     const file=e.target.files[0]; if(!file) return;
     const reader=new FileReader();
-    reader.onload=ev=>{
+    reader.onload=async ev=>{
       try {
         const wb=XLSX.read(ev.target.result,{type:"array",cellDates:true});
         const imported=importFromWorkbook(wb);
-        if(!imported.length){setMsg("⚠️ No se encontraron datos.");return;}
-        setSats(imported);
-        setMsg(`✅ ${imported.length} registros importados.`);
-        setTimeout(()=>setMsg(""),4000);
-      } catch(err){ setMsg("❌ Error: "+err.message); }
+        if(!imported.length){showMsg("⚠️ No se encontraron datos.");return;}
+        showMsg("⏳ Importando "+imported.length+" registros...", 30000);
+        const rows = imported.map(toRow);
+        const { error } = await supabase.from("sats").insert(rows);
+        if (error) { showMsg("❌ Error importando: "+error.message, 8000); return; }
+        // Reload
+        const { data } = await supabase.from("sats").select("*").order("fecha",{ascending:false});
+        setSats((data||[]).map(fromRow));
+        showMsg(`✅ ${imported.length} registros importados correctamente.`);
+      } catch(err){ showMsg("❌ Error: "+err.message, 8000); }
     };
     reader.readAsArrayBuffer(file);
     e.target.value="";
@@ -480,7 +557,12 @@ export default function App() {
 
       {/* Table — fills full width, columns share space */}
       <div className="px-2 py-3">
-        {filtered.length===0 ? (
+        {loading ? (
+          <div className="text-center py-20 text-gray-400">
+            <div className="text-5xl mb-3 animate-spin">⏳</div>
+            <p className="font-medium">Cargando datos de Supabase...</p>
+          </div>
+        ) : filtered.length===0 ? (
           <div className="text-center py-20 text-gray-400">
             <div className="text-5xl mb-3">📋</div>
             <p className="font-medium">No hay SATs que mostrar</p>
