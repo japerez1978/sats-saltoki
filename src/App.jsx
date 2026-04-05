@@ -606,6 +606,7 @@ export default function App() {
             <button onClick={()=>fileRef.current.click()} className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-xl text-sm font-semibold shadow">📂 Cargar</button>
             <button onClick={()=>exportToExcel(sats)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl text-sm font-semibold shadow">📥 Exportar</button>
             <button onClick={()=>setModal(emptyForm())} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl text-sm font-semibold shadow">+ Nuevo</button>
+            <button onClick={()=>supabase.auth.signOut()} className="bg-gray-200 hover:bg-gray-300 text-gray-600 px-3 py-2 rounded-xl text-sm font-medium" title="Cerrar sesión">🔒</button>
           </div>
         </div>
         {selected.size>0 && (
